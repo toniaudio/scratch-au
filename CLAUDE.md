@@ -95,6 +95,13 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
   click del filtro al cambio LP↔HP, doppia apertura del flusso audio, schermo sempre acceso, versione = 100 + commit,
   R8 (APK 3 MB, verificato che `Motore` e i metodi JNI non vengono rinominati), concorrenza CI.
 - Verifiche fatte sull'APK: firma = certificato DVS (SHA-256 88f1bd61…0e22).
+- Suggerimenti della revisione fatti (27/10/2026, notte): scratch regolare (bug stima velocità del dito), inseguimento
+  del dito per interpolazione (niente sbandate), anti-aliasing oltre velocità 1, REC in WAV (Registratore + Musica/DVS
+  via MediaStore), waveform salvabile (`salvaWaveform`/`caricaWaveform`), diagnostica (ritardo, xrun, carico, buffer
+  1×/2×/4×), servizio in primo piano `ServizioAudio` (mediaPlayback), motore vero collegato al JNI (tono di prova =
+  brano di 8 s in loop nel deck A).
+- **Keylock: in sospeso.** Proposta Signalsmith Stretch (MIT); scaricare/inserire codice esterno richiede il permesso
+  esplicito dell'utente (bloccato dal controllo di sicurezza della sessione). In alternativa: keylock scritto da noi.
 - Prossimo: tappa 3 (caricamento brani, waveform, UI come da bozze).
 
 ## Da ricordare (scelte tecniche)

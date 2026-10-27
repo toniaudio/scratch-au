@@ -1,13 +1,23 @@
 package com.toniaudio.djaaay
 
-/** Accesso al motore audio nativo (C++). */
+/** Accesso al motore audio nativo (C++). Il flusso audio è unico per tutta l'app. */
 object Motore {
     init {
         System.loadLibrary("djaaay")
     }
 
+    /** Apre l'audio (se è già aperto non fa niente, la musica non si interrompe). */
     external fun avvia(): Boolean
     external fun ferma()
     external fun sampleRate(): Int
     external fun tonoProva(acceso: Boolean)
+
+    /** Buffer = multiplo × burst del dispositivo: più piccolo = meno ritardo, più grande = più stabile. */
+    external fun impostaBuffer(multiplo: Int)
+    external fun diagnostica(): String
+
+    /** Il motore diventa proprietario del file descriptor e lo chiude sempre. */
+    external fun avviaRegistrazione(fd: Int): Boolean
+    external fun fermaRegistrazione()
+    external fun registrazioneAttiva(): Boolean
 }

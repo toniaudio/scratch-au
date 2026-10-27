@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <unistd.h>
 
 namespace djaaay {
 
@@ -45,7 +46,10 @@ Registratore::~Registratore() { ferma(); }
 bool Registratore::avvia(int fd, int sampleRate) {
     if (fd < 0) return false;
     FILE* f = fdopen(fd, "wb");
-    if (f == nullptr) return false;
+    if (f == nullptr) {
+        close(fd);  // il file descriptor è nostro: va chiuso anche se non si registra
+        return false;
+    }
     if (!inizia(f, sampleRate)) {
         std::fclose(f);
         return false;

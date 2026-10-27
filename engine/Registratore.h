@@ -19,7 +19,8 @@ public:
     Registratore();
     ~Registratore();
 
-    // Fuori dal thread audio. Il Registratore diventa proprietario del file descriptor e lo chiude a fine registrazione.
+    // Fuori dal thread audio. Il Registratore diventa proprietario del file descriptor e lo chiude sempre
+    // (a fine registrazione, o subito se non riesce a partire).
     bool avvia(int fd, int sampleRate);
     bool avviaSuFile(const char* percorso, int sampleRate);  // per i test e per Android < 10
     void ferma();  // svuota l'anello, completa l'intestazione WAV e chiude il file
