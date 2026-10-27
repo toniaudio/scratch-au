@@ -35,6 +35,9 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
   Al centro il nome **DVS**: toccandolo si aprono le **Opzioni** (nessun pulsante ingranaggio).
 - **Waveform alte** (2 strisce, A sopra B), puntina fissa al centro, griglia battute, bandierine hot cue,
   panoramica traccia sotto; pinch = zoom, trascinare = scratch (disattivabile).
+- **LOOP** (tab dei pad): selettore **◀ [ N BATTUTE ] ▶**; le frecce dimezzano/raddoppiano 1/8…32 battute, il tasto centrale
+  accende/spegne il loop da dove si è (allineato alla battuta); cambiare N con loop acceso lo accorcia/allunga subito.
+  Loop acceso = tasto verde; sulla waveform la zona del loop è velata di verde con i bordi.
 - Deck: disco touch (scratch), CUE / Play / SYNC, pad con tab HOT CUE · LOOP · FX; pitch verticale con valore
   e tasto **DVS** (l'escursione ±8/16/50 si sceglie solo nelle Opzioni). Tasto **KEY** (keylock) in alto a sinistra del disco A e in alto a destra del disco B:
   senza riquadro, scritta+lucchetto grigi da spento, verdi illuminati da acceso.
