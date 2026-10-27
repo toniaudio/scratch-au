@@ -54,6 +54,7 @@ void Mixer::canaleRender(int n, float* l, float* r, int frame) {
     Stato& s = st_[n];
     // Le manopole si avvicinano al valore nuovo in ~10 ms (a blocchi), con rampa dentro il blocco
     const float k = std::exp(-static_cast<float>(frame) / (0.01f * sr_));
+    const float kVeloce = std::exp(-static_cast<float>(frame) / (0.002f * sr_));
 
     const float gain0 = s.gain, alti0 = s.alti, medi0 = s.medi, bassi0 = s.bassi, vol0 = s.volume;
     s.gain = avvicina(s.gain, dbLineare(-12.0f + 24.0f * std::clamp(c.gain.load(), 0.0f, 1.0f)), k);
@@ -67,12 +68,21 @@ void Mixer::canaleRender(int n, float* l, float* r, int frame) {
     const float f = std::clamp(c.filtro.load(), -1.0f, 1.0f);
     const float morta = 0.02f;
     const float quanto = std::max(0.0f, std::fabs(f) - morta) / (1.0f - morta);
-    const bool passaAlto = f > 0.0f;
-    const float fc = passaAlto ? 20.0f * std::pow(400.0f, quanto) : 20000.0f * std::pow(0.003f, quanto);
-    const float q = 0.8f + 0.6f * quanto;
-    for (auto& fl : s.filtro) fl.imposta(fc, q, sr_);
+    const bool vuoleAlto = f > 0.0f;
+    float obiettivoMix;
+    if (vuoleAlto != s.passaAlto && s.filtroMix > 0.001f) {
+        // cambio di tipo con il filtro attivo (es. salto da MIDI): prima sfuma quello vecchio, senza click
+        obiettivoMix = 0.0f;
+    } else {
+        s.passaAlto = vuoleAlto;  // stesso filtro: cambia solo l'uscita usata, a volume zero
+        s.fc = vuoleAlto ? 20.0f * std::pow(400.0f, quanto) : 20000.0f * std::pow(0.003f, quanto);
+        s.q = 0.8f + 0.6f * quanto;
+        obiettivoMix = quanto > 0.0f ? 1.0f : 0.0f;
+    }
+    const bool passaAlto = s.passaAlto;
+    for (auto& fl : s.filtro) fl.imposta(s.fc, s.q, sr_);
     const float mix0 = s.filtroMix;
-    s.filtroMix = avvicina(s.filtroMix, quanto > 0.0f ? 1.0f : 0.0f, k);
+    s.filtroMix = avvicina(s.filtroMix, obiettivoMix, obiettivoMix == 0.0f && quanto > 0.0f ? kVeloce : k);
 
     const float inv = 1.0f / static_cast<float>(frame);
     float picco = 0.0f;

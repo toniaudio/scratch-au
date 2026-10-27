@@ -57,6 +57,8 @@ private:
         FiltroSVF filtro[2];
         float gain = 1.0f, alti = 1.0f, medi = 1.0f, bassi = 1.0f, volume = 0.64f, xf = 1.0f;
         float filtroMix = 0.0f;  // 0 = filtro escluso, 1 = attivo
+        bool passaAlto = false;  // tipo di filtro che sta suonando
+        float fc = 20000.0f, q = 0.8f;
     };
     void canaleRender(int n, float* l, float* r, int frame);
 

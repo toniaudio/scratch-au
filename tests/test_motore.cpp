@@ -345,6 +345,34 @@ static void testMixer() {
         verifica(filtrato < 0.05f, testo);
     }
 
+    // Filtro che salta da passa-basso a passa-alto (es. da MIDI): niente click
+    {
+        Motore m;
+        m.prepara(48000.0);
+        m.deck[0].avvioSecondi = 0.0f;
+        m.deck[0].carica(sinusoide(200.0, 20.0, 48000.0, 0.37f));
+        m.mixer.crossfader = 0.0f;
+        m.mixer.canale[0].volume = 1.0f;
+        m.mixer.master = 1.0f;
+        m.mixer.canale[0].filtro = -0.3f;
+        m.deck[0].invia(cmd(ComandoDeck::Play, 1.0));
+        std::vector<float> out(2 * 256);
+        float prec = 0.0f, normale = 0.0f, cambio = 0.0f;
+        for (int k = 0; k < 400; ++k) {
+            if (k == 300) m.mixer.canale[0].filtro = 0.3f;
+            m.render(out.data(), 256);
+            for (int i = 0; i < 256; ++i) {
+                const float d = std::fabs(out[2 * i] - prec);
+                prec = out[2 * i];
+                if (k > 200 && k < 300) normale = std::max(normale, d);
+                if (k >= 300) cambio = std::max(cambio, d);
+            }
+        }
+        char testo[96];
+        std::snprintf(testo, sizeof testo, "filtro da LP a HP senza click (%.4f, normale %.4f)", cambio, normale);
+        verifica(cambio < 1.5f * normale, testo);
+    }
+
     // Due deck a tutto volume con gain al massimo: il limitatore tiene l'uscita entro ±1
     Motore m;
     m.prepara(48000.0);

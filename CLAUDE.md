@@ -88,4 +88,18 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
 
 ## Stato
 
-- 27/10/2026: bozze grafiche approvate (`design/`). Inizio tappa 1.
+- 27/10/2026: bozze grafiche approvate (`design/`). Tappa 1 fatta: `DVS.apk` (tono di prova) pubblicato e firmato.
+- Motore (tappa 2) scritto e testato: `tests/test_motore.cpp` (~50 verifiche, girano anche in CI con ASan/UBSan).
+- Revisione (27/10/2026, sera): corretti Traccia::aggiungi quadratico (51 s → 0,07 s per 5 min), Play durante CUE,
+  loop all'indietro e accorciato, salti con dissolvenza 2 ms, fine brano a metà blocco, salto durante lo scratch,
+  click del filtro al cambio LP↔HP, doppia apertura del flusso audio, schermo sempre acceso, versione = 100 + commit,
+  R8 (APK 3 MB, verificato che `Motore` e i metodi JNI non vengono rinominati), concorrenza CI.
+- Verifiche fatte sull'APK: firma = certificato DVS (SHA-256 88f1bd61…0e22).
+- Prossimo: tappa 3 (caricamento brani, waveform, UI come da bozze).
+
+## Da ricordare (scelte tecniche)
+
+- Il thread dell'interfaccia deve chiamare `Deck::raccogliTracceVecchie()` (es. a ogni frame): libera i brani sostituiti.
+- Quando si collega il motore vero al JNI, `Motore::prepara()` va chiamato solo con il flusso fermo (apri/riapri).
+- Chiudere Oboe tenendo il mutex mentre arriva un `onErrorAfterClose` potrebbe in teoria bloccarsi: caso rarissimo
+  (scollegamento del dispositivo nello stesso istante della chiusura), da rivedere se capita.
