@@ -1,6 +1,6 @@
-# A ogni modifica: prova il motore audio, compila Djaaay per Android e pubblica Djaaay.apk
+# A ogni modifica: prova il motore audio, compila DVS per Android e pubblica DVS.apk
 # nella Release "ultima" (firmato con la chiave fissa, così si installa sopra la versione precedente).
-name: Djaaay
+name: DVS
 
 on:
   push:
@@ -63,13 +63,13 @@ jobs:
           APK=app/build/outputs/apk/release/app-release.apk
           ls -la "$APK"
           unzip -l "$APK" | grep -E "lib/arm64-v8a/(libdjaaay|liboboe|libc\+\+_shared)\.so"
-          cp "$APK" Djaaay.apk
+          cp "$APK" DVS.apk
           echo "FIRMATO=${FIRMATO:-no}" > firmato.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: Djaaay-apk
+          name: DVS-apk
           path: |
-            Djaaay.apk
+            DVS.apk
             firmato.txt
 
   pubblica:
@@ -79,7 +79,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: Djaaay-apk
+          name: DVS-apk
       - name: Pubblica nella Release "ultima"
         env:
           GH_TOKEN: ${{ github.token }}
@@ -90,8 +90,8 @@ jobs:
             exit 0
           fi
           gh release delete ultima -y --cleanup-tag || true
-          gh release create ultima Djaaay.apk --target "$GITHUB_SHA" --title "Djaaay – ultima versione" --notes-file - <<'NOTE'
-          Dal **Pixel**: tocca **Djaaay.apk** per scaricarlo, poi aprilo dalle notifiche o da *File › Download* e tocca **Installa**.
+          gh release create ultima DVS.apk --target "$GITHUB_SHA" --title "DVS – ultima versione" --notes-file - <<'NOTE'
+          Dal **Pixel**: tocca **DVS.apk** per scaricarlo, poi aprilo dalle notifiche o da *File › Download* e tocca **Installa**.
           La prima volta Android chiede di consentire l'installazione da Chrome (o dall'app File): consenti.
           Le versioni nuove si installano sopra quella vecchia, senza perdere niente.
           NOTE

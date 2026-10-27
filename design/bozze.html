@@ -23,7 +23,7 @@ html,body{width:914px;height:411px;overflow:hidden;background:var(--bg);color:va
 .bpm{font-family:'JetBrains Mono';font-weight:700;font-size:13px}
 .bpm small{font-size:9px;color:var(--dim);font-weight:500}
 .time{font-family:'JetBrains Mono';color:var(--dim);font-size:10.5px}
-.logo{font-weight:800;letter-spacing:.5px;font-size:13px;padding:0 6px}
+.logo{font-weight:800;letter-spacing:2px;font-size:15px;padding:4px 14px;border-radius:7px;background:var(--panel2);border:1px solid var(--line)}
 .logo i{font-style:normal;color:var(--txt)}
 .ico{width:26px;height:26px;border-radius:7px;background:var(--panel2);display:grid;place-items:center;color:var(--dim)}
 .ico svg{width:15px;height:15px}
@@ -194,6 +194,28 @@ html,body{width:914px;height:411px;overflow:hidden;background:var(--bg);color:va
 .xcurve{width:22px;height:11px;color:var(--dim)}
 .col{position:relative}
 .kpos{position:absolute;top:0;z-index:2}
+
+.ico.lib{width:30px;height:26px;color:var(--txt)}
+.ico.lib.on{background:#c9cfdb;color:#0b0d12}
+/* libreria dentro il deck */
+.dlib{position:absolute;inset:0;background:#10131b;border:1px solid var(--line);border-radius:10px;margin:4px 6px;z-index:5;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 24px #000a}
+.dlh{display:flex;align-items:center;gap:6px;padding:6px 7px 4px}
+.dlh .srch{flex:1;height:24px;border-radius:7px;background:var(--panel);border:1px solid var(--line);display:flex;align-items:center;gap:6px;padding:0 8px;color:var(--dim);font-size:10px}
+.dlh .x{width:24px;height:24px;border-radius:6px;background:var(--panel2);display:grid;place-items:center;color:var(--dim)}
+.dlt{display:flex;gap:3px;padding:0 7px 4px}
+.dlt span{font-size:8.5px;font-weight:800;padding:3px 7px;border-radius:5px;color:var(--dim);background:var(--panel)}
+.dlt span.on{background:var(--panel2);color:var(--txt)}
+.dlr{display:grid;grid-template-columns:1fr 34px 30px;gap:6px;align-items:center;padding:0 9px;height:27px;border-top:1px solid #1a1f2c}
+.dlr .tt{min-width:0}
+.dlr .tt b{display:block;font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dlr .tt i{display:block;font-style:normal;font-size:8.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dlr .n{font-family:'JetBrains Mono';font-size:9.5px;text-align:right}
+.dlr .d{font-family:'JetBrains Mono';font-size:9px;color:var(--dim);text-align:right}
+.dlr.sel{background:#ffffff10}
+.dlr.car{color:var(--dim)}
+.dlf{margin-top:auto;padding:5px 8px;font-size:8.5px;color:var(--dim);border-top:1px solid var(--line);display:flex;justify-content:space-between}
+.dlrow-f{display:flex;align-items:center;gap:8px;padding:0 9px;height:27px;border-top:1px solid #1a1f2c;font-size:10px;font-weight:600}
+.dlrow-f em{font-style:normal;color:var(--dim);font-weight:500;margin-left:auto;font-size:9px}
 </style>
 </head>
 <body>
@@ -201,13 +223,11 @@ html,body{width:914px;height:411px;overflow:hidden;background:var(--bg);color:va
 <!-- ============ SCHERMATA 1: DECK ============ -->
 <div class="screen" id="s1">
   <div class="top">
-    <div class="trk"><div class="dot" style="background:var(--panel2);color:var(--txt)">A</div>
+    <div class="trk"><div class="ico lib" title="libreria deck A"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h11M4 12h11M4 18h7"/><circle cx="18.5" cy="16.5" r="2.5"/><path d="M21 16.5V6l-3 1"/></svg></div><div class="dot" style="background:var(--panel2);color:var(--txt)">A</div>
       <div style="min-width:0"><div class="t">Funky Drummer Break</div><div class="s">Classic Breaks · 4:12</div></div>
       <div style="margin-left:auto;text-align:right"><div class="bpm">98.0 <small>BPM</small></div><div class="time">-2:47</div></div></div>
-    <div class="logo"><i>Djaaay</i></div>
-    <div class="ico" title="libreria"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
-    <div class="ico" title="opzioni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-1.8-.3 1.6 1.6 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0 .3-1.8 1.6 1.6 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.5-1 1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1z"/></svg></div>
-    <div class="trk b"><div class="dot" style="background:var(--panel2);color:var(--txt)">B</div>
+    <div class="logo" title="opzioni"><i>DVS</i></div>
+    <div class="trk b"><div class="ico lib" title="libreria deck B"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h11M4 12h11M4 18h7"/><circle cx="18.5" cy="16.5" r="2.5"/><path d="M21 16.5V6l-3 1"/></svg></div><div class="dot" style="background:var(--panel2);color:var(--txt)">B</div>
       <div style="min-width:0"><div class="t">Ahhh Fresh (Scratch Tool)</div><div class="s">Skratch Sounds · 1:58</div></div>
       <div style="margin-right:auto;text-align:left"><div class="bpm">98.0 <small>BPM</small></div><div class="time">-1:21</div></div></div>
   </div>
@@ -308,7 +328,7 @@ html,body{width:914px;height:411px;overflow:hidden;background:var(--bg);color:va
   <div id="s3bg"></div>
   <div class="dim"></div>
   <div class="sheet">
-    <h2>Opzioni <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg></span></h2>
+    <h2>Opzioni · DVS <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg></span></h2>
     <div class="cols">
       <div>
         <h3>PIATTO E SCRATCH</h3>
@@ -416,6 +436,36 @@ fxScreen('s5',
   fxUnit('B',B,true,'REVERB',[['DRY/WET','30%',-55,1],['STANZA','grande',70],['DAMP','50%',0]],'CODA',['corta','media','lunga'],'lunga'),
   pad('ECHO',A,1)+pad('DUB',A)+pad('VERB',A)+pad('STRETCH',A),
   pad('ECHO',B)+pad('DUB',B)+pad('VERB',B,1)+pad('STRETCH',B));
+
+
+function libPanel(deck,tab,righe,nota){
+  const tabs=['Tutti','Cartelle','Playlist','Recenti'];
+  return `<div class="dlib"><div class="dlh"><div class="srch"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>Cerca nel deck ${deck}…</div><div class="x"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8"><path d="M6 6l12 12M18 6L6 18"/></svg></div></div>
+   <div class="dlt">${tabs.map(x=>`<span class="${x===tab?'on':''}">${x}</span>`).join('')}</div>${righe}<div class="dlf">${nota}</div></div>`;
+}
+const brano=(t,a,b,d,cls='')=>`<div class="dlr ${cls}"><div class="tt"><b>${t}</b><i>${a}</i></div><span class="n">${b}</span><span class="d">${d}</span></div>`;
+function libScreen(id,deckIdx,panel){
+  const sc=document.getElementById('s1').cloneNode(true);sc.id=id;
+  sc.querySelectorAll('canvas').forEach((c,i)=>{c.getContext('2d').drawImage(document.getElementById(i?'wb':'wa'),0,0)});
+  const d=sc.querySelectorAll('.deck')[deckIdx];d.insertAdjacentHTML('beforeend',panel);
+  sc.querySelectorAll('.ico.lib')[deckIdx].classList.add('on');
+  document.body.appendChild(sc);
+}
+libScreen('s6',0,libPanel('A','Tutti',
+  brano('Funky Drummer Break','Classic Breaks','98.0','4:12','car')+
+  brano('Impeach the Groove','Classic Breaks','96.4','3:31','sel')+
+  brano('Late Night Cuts','DJ Toni','92.0','5:05')+
+  brano('Boom Bap Loop 03','Beat Lab','90.0','2:20')+
+  brano('Sunday Groove','Mr Funk','104.2','4:48')+
+  brano('Battle Weapon Vol.2','Skratch Sounds','<span style="color:var(--warn)">…</span>','6:12'),
+  '<span>tocca un brano: si carica nel deck A</span><span>248 brani</span>'));
+libScreen('s7',1,libPanel('B','Cartelle',
+  `<div class="dlrow-f">▸ Download<em>12</em></div><div class="dlrow-f">▾ Musica / Scratch tools<em>34</em></div>`+
+  brano('Ahhh Fresh (Scratch Tool)','Skratch Sounds','98.0','1:58','car')+
+  brano('Fresh Vox Pack','Skratch Sounds','—','0:47','sel')+
+  brano('Battle Weapon Vol.2','Skratch Sounds','98.0','6:12')+
+  brano('Baby Scratch Loops','Q-Bert','88.0','3:02'),
+  '<span>tocca un brano: si carica nel deck B</span><span>Scratch tools</span>'));
 
 const s=new URLSearchParams(location.search).get('s')||'1';
 document.getElementById('s'+s).classList.add('on');

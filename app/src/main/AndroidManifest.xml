@@ -7,10 +7,10 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
 
     <application
-        android:label="Djaaay"
+        android:label="DVS"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
-        android:theme="@style/Tema.Djaaay"
+        android:theme="@style/Tema.DVS"
         android:supportsRtl="false">
         <activity
             android:name=".MainActivity"

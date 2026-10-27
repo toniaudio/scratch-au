@@ -31,7 +31,7 @@ class MainActivity : ComponentActivity() {
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text("Djaaay", color = Color.White, fontSize = 32.sp)
+                Text("DVS", color = Color.White, fontSize = 32.sp)
                 Text(
                     if (audioOk) "Audio pronto: ${Motore.sampleRate()} Hz" else "Audio non disponibile",
                     color = Color(0xFF8A93A8),

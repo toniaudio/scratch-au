@@ -14,7 +14,7 @@ android {
     System.getenv("DJAAAY_NDK")?.let { ndkVersion = it }
 
     defaultConfig {
-        applicationId = "com.toniaudio.djaaay"
+        applicationId = "com.toniaudio.dvs"
         minSdk = 28
         targetSdk = 35
         versionCode = numeroBuild
