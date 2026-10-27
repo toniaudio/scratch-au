@@ -1,0 +1,78 @@
+# A ogni modifica: prova il DSP, costruisce l'app per iPad (non firmata) e pubblica
+# ScratchAU.ipa nella Release "ultima". SideStore/AltStore la firmano con l'Apple ID gratuito.
+name: Build ScratchAU
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test-dsp:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test del DSP
+        run: |
+          g++ -std=c++17 -O1 -Wall -Wextra -Werror -fsanitize=address,undefined -IDSP tests/test_dsp.cpp -o test_dsp
+          ./test_dsp
+
+  ipa:
+    needs: test-dsp
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: XcodeGen
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: Compila per iPad (senza firma)
+        run: |
+          set -o pipefail
+          xcodebuild -project ScratchAU.xcodeproj -scheme ScratchAU -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build | tee xcodebuild.log | grep -E "error:|warning:|BUILD" || true
+          test -d build/Build/Products/Release-iphoneos/ScratchAU.app || { tail -100 xcodebuild.log; exit 1; }
+      - name: Controlla il plugin dentro l'app
+        run: |
+          APP=build/Build/Products/Release-iphoneos/ScratchAU.app
+          APPEX=$APP/PlugIns/ScratchAUExtension.appex
+          test -f "$APPEX/ScratchAUExtension" || { echo "Estensione AUv3 mancante"; find "$APP" -maxdepth 3; exit 1; }
+          plutil -extract NSExtension.NSExtensionPointIdentifier raw "$APPEX/Info.plist"
+          plutil -extract NSExtension.NSExtensionAttributes.AudioComponents.0.type raw "$APPEX/Info.plist"
+          plutil -extract NSExtension.NSExtensionPrincipalClass raw "$APPEX/Info.plist"
+          lipo -info "$APPEX/ScratchAUExtension"
+      - name: Crea ScratchAU.ipa
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/ScratchAU.app Payload/
+          zip -qry ScratchAU.ipa Payload
+          ls -la ScratchAU.ipa
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ScratchAU-ipa
+          path: ScratchAU.ipa
+
+  pubblica:
+    needs: ipa
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ScratchAU-ipa
+      - name: Pubblica nella Release "ultima"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete ultima -y --cleanup-tag || true
+          gh release create ultima ScratchAU.ipa --target "$GITHUB_SHA" --title "ScratchAU – ultima versione" --notes-file - <<'NOTE'
+          Scarica **ScratchAU.ipa** dall'iPad (Safari › Download) e installalo con SideStore o AltStore (tasto **+** › scegli il file).
+          Le istruzioni complete sono nel README del repository.
+          NOTE

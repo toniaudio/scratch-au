@@ -1,0 +1,58 @@
+# Progetto Xcode generato da XcodeGen (`xcodegen generate`): niente .xcodeproj nel repository.
+name: ScratchAU
+options:
+  bundleIdPrefix: com.toniaudio
+  deploymentTarget:
+    iOS: "15.0"
+  developmentLanguage: it
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    CLANG_CXX_LANGUAGE_STANDARD: "c++17"
+    CLANG_ENABLE_OBJC_ARC: YES
+    CODE_SIGN_STYLE: Manual
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  ScratchAU:
+    type: application
+    platform: iOS
+    sources: [App]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.toniaudio.scratchau
+        INFOPLIST_FILE: App/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+    dependencies:
+      - target: ScratchAUExtension
+        embed: true
+
+  ScratchAUExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Extension
+      - DSP
+    settings:
+      base:
+        PRODUCT_NAME: ScratchAUExtension
+        PRODUCT_BUNDLE_IDENTIFIER: com.toniaudio.scratchau.AUv3
+        INFOPLIST_FILE: Extension/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        SWIFT_OBJC_BRIDGING_HEADER: Extension/ScratchAU-Bridging-Header.h
+        HEADER_SEARCH_PATHS: ["$(SRCROOT)/DSP"]
+        APPLICATION_EXTENSION_API_ONLY: YES
+    dependencies:
+      - sdk: AudioToolbox.framework
+      - sdk: AVFoundation.framework
+      - sdk: CoreAudioKit.framework
+
+schemes:
+  ScratchAU:
+    build:
+      targets:
+        ScratchAU: all
+        ScratchAUExtension: all
