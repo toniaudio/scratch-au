@@ -23,9 +23,19 @@ struct Waveform {
 
 Waveform analizzaWaveform(const Traccia& t);
 
+// Tempo del brano: BPM e istante della prima battuta (in secondi). bpm = 0 se non si riesce a stimarlo
+// (es. brano senza ritmo). Le battute successive cadono a primoBattito + k · 60 / bpm.
+struct Tempo {
+    double bpm = 0.0;
+    double primoBattito = 0.0;
+};
+
+Tempo analizzaTempo(const Traccia& t);
+
 // Salvataggio dell'analisi: la seconda volta che si carica un brano la waveform è pronta subito.
 // Si salva solo il livello di dettaglio massimo, gli altri si ricostruiscono al caricamento (è rapidissimo).
-bool salvaWaveform(const Waveform& w, const char* percorso);
-bool caricaWaveform(const char* percorso, Waveform& w);
+// Nel file c'è anche il tempo, così BPM e griglia non vanno ricalcolati.
+bool salvaWaveform(const Waveform& w, const Tempo& tempo, const char* percorso);
+bool caricaWaveform(const char* percorso, Waveform& w, Tempo& tempo);
 
 }  // namespace djaaay

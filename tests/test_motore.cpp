@@ -1,5 +1,6 @@
 // Test del motore audio, senza Android:
 //   g++ -std=c++17 -Iengine tests/*.cpp engine/*.cpp -o test_motore -lpthread && ./test_motore
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -525,6 +526,28 @@ static void testKeylock() {
         if (key) verifica(vicino(d.velocita(), 1.08, 1e-3), "con keylock la velocità resta +8%");
     }
 
+    // 1b) anche a escursioni grandi (±16%, ±50%) il tono resta quello originale
+    for (float pitch : {0.16f, -0.16f, 0.5f, -0.5f}) {
+        Motore m;
+        m.prepara(48000.0);
+        Deck& d = m.deck[0];
+        d.avvioSecondi = 0.0f;
+        d.carica(sinusoide(1000.0, 30.0, 48000.0, 0.5f));
+        d.pitch = pitch;
+        d.keylock = true;
+        m.mixer.crossfader = 0.0f;
+        m.mixer.canale[0].volume = 1.0f;
+        m.mixer.master = 1.0f;
+        d.invia(cmd(ComandoDeck::Play, 1.0));
+        gira(m, 1.0);
+        std::vector<float> out(2 * 48000);
+        m.render(out.data(), 48000);
+        const double f = frequenza(out, 48000.0);
+        char testo[80];
+        std::snprintf(testo, sizeof testo, "keylock con pitch %+.0f%%: %.0f Hz (atteso 1000)", pitch * 100.0, f);
+        verifica(vicino(f, 1000.0, 10.0) && vicino(d.velocita(), 1.0 + pitch, 1e-3), testo);
+    }
+
     // 2) allineamento: il colpo deve uscire nello stesso istante con e senza keylock (ritardo compensato)
     long momento[2] = {-1, -1};
     for (int k = 0; k < 2; ++k) {
@@ -612,6 +635,61 @@ static void testKeylock() {
     }
 }
 
+// Batteria finta: cassa su ogni battito, rullante sul 2 e sul 4, charleston in levare; prima battuta a `inizio` s
+static Traccia* batteria(double bpm, double secondi, double inizio, double sr = 44100.0) {
+    auto* t = new Traccia();
+    t->sampleRate = sr;
+    const int64_t n = static_cast<int64_t>(secondi * sr);
+    std::vector<float> x(static_cast<size_t>(n), 0.0f);
+    uint32_t caso = 12345;
+    auto rumore = [&caso] {
+        caso = caso * 1664525u + 1013904223u;
+        return static_cast<float>(caso >> 8) / 8388608.0f - 1.0f;
+    };
+    const double battito = 60.0 / bpm;
+    for (int k = 0; inizio + k * battito < secondi; ++k) {
+        const double tb = inizio + k * battito;
+        auto aggiungi = [&](double quando, double durata, auto suono) {
+            const int64_t a = static_cast<int64_t>(quando * sr);
+            for (int64_t i = 0; i < static_cast<int64_t>(durata * sr) && a + i < n; ++i)
+                if (a + i >= 0) x[static_cast<size_t>(a + i)] += suono(i / sr);
+        };
+        aggiungi(tb, 0.25, [](double s) { return 0.8f * static_cast<float>(std::sin(2 * M_PI * 55 * s) * std::exp(-s / 0.08)); });
+        if (k % 2 == 1)
+            aggiungi(tb, 0.15, [&](double s) { return 0.35f * rumore() * static_cast<float>(std::exp(-s / 0.04)); });
+        aggiungi(tb + battito / 2, 0.04, [&](double s) { return 0.15f * rumore() * static_cast<float>(std::exp(-s / 0.01)); });
+    }
+    std::vector<int16_t> pcm(static_cast<size_t>(n) * 2);
+    for (int64_t i = 0; i < n; ++i)
+        pcm[static_cast<size_t>(i) * 2] = pcm[static_cast<size_t>(i) * 2 + 1] =
+            static_cast<int16_t>(std::clamp(x[static_cast<size_t>(i)], -1.0f, 1.0f) * 32000.0f);
+    t->aggiungi(pcm.data(), n, 2);
+    return t;
+}
+
+static void testBpm() {
+    struct Caso {
+        double bpm, inizio;
+    };
+    for (Caso c : {Caso{98.0, 0.37}, Caso{128.0, 0.05}, Caso{90.0, 1.2}, Caso{140.0, 0.6}, Caso{85.5, 0.0}, Caso{121.3, 0.25}}) {
+        Traccia* t = batteria(c.bpm, 60.0, c.inizio);
+        const Tempo tempo = analizzaTempo(*t);
+        // la prima battuta trovata può essere una qualsiasi della griglia: si confronta la fase
+        const double battito = 60.0 / c.bpm;
+        double scarto = std::fmod(tempo.primoBattito - c.inizio, battito);
+        if (scarto < 0) scarto += battito;
+        scarto = std::min(scarto, battito - scarto);
+        char testo[112];
+        std::snprintf(testo, sizeof testo, "BPM %.1f: trovato %.2f, prima battuta sfasata di %.1f ms", c.bpm, tempo.bpm,
+                      scarto * 1000.0);
+        verifica(vicino(tempo.bpm, c.bpm, 0.1) && scarto < 0.015, testo);
+        delete t;
+    }
+    Traccia* tono = sinusoide(440.0, 20.0);
+    verifica(analizzaTempo(*tono).bpm == 0.0, "BPM: un tono continuo non ha tempo (0)");
+    delete tono;
+}
+
 static std::string fileTemporaneo(const char* nome) {
     const char* dir = std::getenv("TMPDIR");
     return std::string(dir ? dir : "/tmp") + "/" + nome;
@@ -667,13 +745,18 @@ static void testCacheWaveform() {
     Traccia* t = sinusoide(3000.0, 4.0);
     const Waveform w = analizzaWaveform(*t);
     const std::string percorso = fileTemporaneo("dvs_test.wavef");
+    Tempo tempo;
+    tempo.bpm = 98.5;
+    tempo.primoBattito = 0.37;
     Waveform letta;
-    const bool ok = salvaWaveform(w, percorso.c_str()) && caricaWaveform(percorso.c_str(), letta);
+    Tempo tempoLetto;
+    const bool ok = salvaWaveform(w, tempo, percorso.c_str()) && caricaWaveform(percorso.c_str(), letta, tempoLetto);
     bool uguale = ok && letta.livelli.size() == w.livelli.size();
     for (size_t i = 0; uguale && i < w.livelli.size(); ++i)
         uguale = letta.livelli[i].bassi == w.livelli[i].bassi && letta.livelli[i].medi == w.livelli[i].medi &&
                  letta.livelli[i].alti == w.livelli[i].alti && letta.livelli[i].framePerColonna == w.livelli[i].framePerColonna;
-    verifica(uguale, "waveform salvata e ricaricata identica (tutti i livelli)");
+    verifica(uguale && tempoLetto.bpm == 98.5 && tempoLetto.primoBattito == 0.37,
+             "waveform e tempo salvati e ricaricati identici (tutti i livelli)");
     // file rovinato: rifiutato senza danni
     if (FILE* f = std::fopen(percorso.c_str(), "r+b")) {
         std::fseek(f, 0, SEEK_SET);
@@ -681,8 +764,9 @@ static void testCacheWaveform() {
         std::fclose(f);
     }
     Waveform rovinata;
-    verifica(!caricaWaveform(percorso.c_str(), rovinata), "waveform: file rovinato rifiutato");
-    verifica(!caricaWaveform(fileTemporaneo("non_esiste.wavef").c_str(), rovinata), "waveform: file mancante rifiutato");
+    verifica(!caricaWaveform(percorso.c_str(), rovinata, tempoLetto), "waveform: file rovinato rifiutato");
+    verifica(!caricaWaveform(fileTemporaneo("non_esiste.wavef").c_str(), rovinata, tempoLetto),
+             "waveform: file mancante rifiutato");
     std::remove(percorso.c_str());
     delete t;
 }
@@ -695,6 +779,7 @@ int main() {
     testAntiAliasing();
     testMixer();
     testWaveform();
+    testBpm();
     testKeylock();
     testCacheWaveform();
     testRegistrazione();
