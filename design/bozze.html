@@ -193,7 +193,10 @@ html,body{width:914px;height:411px;overflow:hidden;background:var(--bg);color:va
 .xrow .xtrack{width:150px;flex:none}
 .xcurve{width:22px;height:11px;color:var(--dim)}
 .col{position:relative}
-.kpos{position:absolute;top:0;z-index:2}
+.kpos{position:absolute;top:0;z-index:2;background:none!important;border:none!important;width:auto;padding:0 2px;font-size:9.5px;gap:3px;color:#5a6378}
+.kpos svg{width:11px;height:11px}
+.kpos.on{color:var(--ok);text-shadow:0 0 6px #3ddc8499}
+.kpos.on svg{filter:drop-shadow(0 0 3px #3ddc8499)}
 
 .ico.lib{width:30px;height:26px;color:var(--txt)}
 .ico.lib.on{background:#c9cfdb;color:#0b0d12}
@@ -282,7 +285,7 @@ html,body{width:914px;height:411px;overflow:hidden;background:var(--bg);color:va
 
     <div class="deck b">
       <div class="col">
-        <div class="klock kpos on" style="right:-4px;background:#c9cfdb;border-color:#c9cfdb"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10V7a5 5 0 0 1 10 0v3h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zm2 0h6V7a3 3 0 0 0-6 0z"/></svg>KEY</div>
+        <div class="klock kpos on" style="right:-4px"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 10V7a5 5 0 0 1 10 0v3h1a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1zm2 0h6V7a3 3 0 0 0-6 0z"/></svg>KEY</div>
         <div class="platter"><div class="ring" style="border-color:#2d3448"></div><div class="mk" style="transform:rotate(-122deg)"></div><div class="lab" style="background:var(--db)">B</div></div>
         <div class="tr"><div class="btn">CUE</div><div class="btn play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg></div><div class="btn on" style="background:var(--b)">SYNC</div></div>
         <div class="tabs"><div class="tab">HOT CUE</div><div class="tab on">LOOP</div><div class="tab">FX</div></div>
