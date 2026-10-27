@@ -1,0 +1,89 @@
+# A ogni modifica: prova il motore audio, compila Djaaay per Android e pubblica Djaaay.apk
+# nella Release "ultima" (firmato con la chiave fissa, così si installa sopra la versione precedente).
+name: Djaaay
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  motore:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test del motore audio
+        run: |
+          if ls tests/*.cpp >/dev/null 2>&1; then
+            g++ -std=c++17 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -Iengine \
+              tests/*.cpp $(ls engine/*.cpp 2>/dev/null) -o test_motore -lpthread
+            ./test_motore
+          else
+            echo "nessun test"
+          fi
+
+  apk:
+    needs: motore
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Chiave di firma
+        env:
+          CHIAVE: ${{ secrets.DJAAAY_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$CHIAVE" ]; then
+            echo "$CHIAVE" | base64 -d > "$RUNNER_TEMP/djaaay.p12"
+            echo "DJAAAY_KEYSTORE_FILE=$RUNNER_TEMP/djaaay.p12" >> "$GITHUB_ENV"
+            echo "DJAAAY_KEYSTORE_PASSWORD=djaaay-firma" >> "$GITHUB_ENV"
+            echo "FIRMATO=si" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Manca il secret DJAAAY_KEYSTORE_B64: l'APK è firmato con una chiave di prova e non viene pubblicato."
+          fi
+      - name: Compila
+        run: ./gradlew --no-daemon assembleRelease
+      - name: Controlla l'APK
+        run: |
+          APK=app/build/outputs/apk/release/app-release.apk
+          ls -la "$APK"
+          unzip -l "$APK" | grep -E "lib/arm64-v8a/(libdjaaay|liboboe|libc\+\+_shared)\.so"
+          cp "$APK" Djaaay.apk
+          echo "FIRMATO=${FIRMATO:-no}" > firmato.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Djaaay-apk
+          path: |
+            Djaaay.apk
+            firmato.txt
+
+  pubblica:
+    needs: apk
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Djaaay-apk
+      - name: Pubblica nella Release "ultima"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if ! grep -q "FIRMATO=si" firmato.txt; then
+            echo "::warning::APK non firmato con la chiave fissa: non pubblicato."
+            exit 0
+          fi
+          gh release delete ultima -y --cleanup-tag || true
+          gh release create ultima Djaaay.apk --target "$GITHUB_SHA" --title "Djaaay – ultima versione" --notes-file - <<'NOTE'
+          Dal **Pixel**: tocca **Djaaay.apk** per scaricarlo, poi aprilo dalle notifiche o da *File › Download* e tocca **Installa**.
+          La prima volta Android chiede di consentire l'installazione da Chrome (o dall'app File): consenti.
+          Le versioni nuove si installano sopra quella vecchia, senza perdere niente.
+          NOTE

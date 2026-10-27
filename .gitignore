@@ -1,7 +1,12 @@
+.gradle/
 build/
-*.xcodeproj/
-Payload/
-*.ipa
-xcodebuild.log
-test_dsp
+*/build/
+local.properties
+.idea/
+*.iml
+.cxx/
+*.apk
+*.p12
+*.jks
+test_motore
 .DS_Store

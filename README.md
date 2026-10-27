@@ -1,65 +1,23 @@
-# ScratchAU
+# Djaaay
 
-Plugin **AUv3** per **AUM** (iPad) per fare scratch su una traccia, con un crossfader mappabile via MIDI
-(pensato per il crossfader dell'M-Audio X-Session Pro).
+App DJ per **Android** (pensata per un Google Pixel in orizzontale): due deck, scratch col dito, mixer con EQ e filtro,
+crossfader, BPM e sync, hot cue, loop, effetti, controller **M-Audio X-Session Pro** via USB.
+Suona i tuoi file (mp3, wav, m4a, flac…). Le bozze grafiche sono in [`design/`](design/).
 
-> **Stato: fase 1 – plugin "vuoto".** Fa passare l'audio del canale attraverso il crossfader.
-> Serve a verificare che l'installazione funzioni e che il plugin compaia in AUM.
-> Caricamento della traccia, piatto touch e scratch arrivano nei prossimi aggiornamenti.
+> **Stato:** in costruzione. La prima versione suona solo un tono di prova per verificare installazione e audio.
 
-## Scaricare l'app
+## Installarla sul Pixel
 
-Ogni modifica al codice viene costruita in automatico da GitHub (scheda **Actions**).
-Il file pronto è **`ScratchAU.ipa`** nella Release **"ultima"** (scheda **Releases**, a destra nella pagina del repository).
+1. Dal telefono apri la pagina **Releases** di questo repository (Release **"ultima"**) e tocca **Djaaay.apk**.
+2. A download finito tocca la notifica (o apri *File › Download*) e poi **Installa**.
+3. La prima volta Android chiede di consentire l'installazione di app da Chrome (o da File): **consenti** e torna indietro.
+4. Se compare un avviso di Play Protect, tocca *Altri dettagli › Installa comunque* (l'app non viene dal Play Store).
 
-Dall'iPad: apri la pagina della Release in Safari, tocca `ScratchAU.ipa`, poi *Scarica*. Lo trovi nell'app File › Download.
-
-## Installarla sull'iPad (gratis, con il tuo Apple ID)
-
-L'app non è firmata da Apple: la firma **SideStore** con il tuo Apple ID gratuito.
-Con un Apple ID gratuito la firma dura 7 giorni; SideStore la rinnova da solo.
-
-**Una volta sola, con il Mac:**
-1. Sull'iPad installa **LocalDevVPN** dall'App Store (serve a SideStore per firmare le app senza computer).
-2. Sul Mac scarica **iloader** dalla sua pagina ufficiale su GitHub (`nab138/iloader`, sezione *Releases*).
-3. Collega l'iPad al Mac con il cavo, sblocca l'iPad e tocca *Autorizza* se lo chiede.
-4. Apri iloader, accedi con il tuo Apple ID e scegli di installare **SideStore**: iloader installa l'app e il "file di abbinamento".
-5. Sull'iPad: Impostazioni › Generali › VPN e gestione dispositivi › tocca il tuo Apple ID › *Autorizza*.
-   Se iPadOS lo chiede, attiva anche la **Modalità sviluppatore** (Impostazioni › Privacy e sicurezza) e riavvia.
-
-**Installare ScratchAU:**
-1. Attiva la VPN in LocalDevVPN.
-2. Apri SideStore › *My Apps* › **+** › scegli `ScratchAU.ipa` dalla cartella Download.
-3. Se chiede cosa fare delle estensioni dell'app, scegli di **tenerle** (*Keep App Extensions*): il plugin è proprio l'estensione.
-
-**Rinnovo:** ogni tanto apri SideStore con LocalDevVPN attiva e tocca *Refresh All* (o lascia fare all'aggiornamento automatico).
-Limiti dell'Apple ID gratuito: massimo 3 app installate così (SideStore conta come una) e 10 "App ID" a settimana
-(ScratchAU ne usa 2: app + plugin).
-
-**Aggiornare ScratchAU:** scarica di nuovo `ScratchAU.ipa` dalla Release e reinstallalo da SideStore con **+**.
-
-## Usarlo in AUM
-
-1. Apri AUM, aggiungi un canale audio (es. con un'app, un file o il microfono come sorgente).
-2. In uno slot del canale scegli *Audio Unit Extensions* › **Toniaudio: ScratchAU**.
-3. Tocca il plugin per aprirne la finestra.
-
-### Crossfader dell'X-Session
-
-1. Collega l'X-Session all'iPad (adattatore USB; se non si accende, un hub USB alimentato).
-2. In AUM tocca lo slot del plugin e apri **MIDI Control**: trova il parametro *Crossfader*,
-   tocca *Learn* e muovi il crossfader dell'X-Session.
-
-Tutto a **sinistra = traccia**, tutto a **destra = ingresso** del canale.
-Curve: **Taglio** (da scratch: tutto pieno tranne un taglio netto agli estremi), **Lineare**, **Potenza costante**.
-**Inverti** scambia i due lati ("hamster switch"). Anche *Curva* e *Inverti* sono mappabili via MIDI.
+Per aggiornare: scarica di nuovo `Djaaay.apk` e installalo sopra. Le tue impostazioni restano.
 
 ## Per chi sviluppa
 
-- `project.yml` – progetto Xcode generato con XcodeGen (nessun `.xcodeproj` nel repository).
-- `App/` – app contenitore (solo istruzioni).
-- `Extension/` – estensione AUv3 (`aumf`, Music Effect): Audio Unit in Objective-C++, finestra in Swift/UIKit.
-- `DSP/` – elaborazione audio in C++ senza dipendenze Apple; regole real-time: niente allocazioni, lock o I/O in `process()`.
-- `tests/` – test del DSP, girano anche su Linux:
-  `g++ -std=c++17 -IDSP tests/test_dsp.cpp -o test_dsp && ./test_dsp`
-- `.github/workflows/build.yml` – test, build per iPad senza firma, `.ipa` nella Release "ultima".
+- `app/` – app Android (Kotlin, Jetpack Compose). `app/src/main/cpp/` – ponte JNI e uscita audio con Oboe.
+- `engine/` – motore audio in C++17 senza dipendenze Android; `tests/` lo prova anche su Linux.
+- `.github/workflows/android.yml` – test, compilazione, firma (secret `DJAAAY_KEYSTORE_B64`), Release "ultima".
+- Il vecchio plugin AUv3 per iPad (ScratchAU) è nel ramo `ios-scratchau`.

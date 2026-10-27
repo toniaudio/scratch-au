@@ -1,126 +1,65 @@
-# ScratchAU — Plugin AUv3 per AUM (iOS) per scratch con crossfader MIDI
+# Djaaay — app DJ per Android (Google Pixel)
 
-Questo file riassume una conversazione di pianificazione. Leggilo tutto prima di iniziare.
-**Parla con l'utente in italiano.** L'utente non è uno sviluppatore: spiega ogni passaggio pratico (GitHub, SideStore, AUM) in modo semplice, un passo alla volta.
+**Parla con l'utente in italiano.** L'utente non è uno sviluppatore: spiega ogni passaggio pratico (GitHub, installazione
+dell'APK, collegamento dell'X-Session) in modo semplice, un passo alla volta.
 
----
+Il repository si chiamava `scratch-au` (plugin AUv3 per iPad): quel progetto è archiviato nel ramo `ios-scratchau`.
+Il 27/10/2026 l'utente ha scelto di passare ad Android: su iPad la firma gratuita scade ogni 7 giorni, su Android l'APK resta.
 
 ## Obiettivo
 
-Un plugin **AUv3** (non VST: su iOS il formato è AUv3) da usare dentro **AUM** su iPad/iPhone che:
+App DJ "stile djay" (ispirazione, NON copia: nome, grafica e logo nostri) per **Pixel telefono, in orizzontale**:
+due deck che suonano i file dell'utente (mp3, wav, m4a, flac…), scratch col dito, mixer, crossfader, BPM e sync,
+hot cue, loop, effetti, controller MIDI **M-Audio X-Session Pro** via USB.
+Niente streaming (Spotify ecc.: impossibile senza accordi commerciali).
 
-1. Carica una traccia o un sample **mp3/wav**.
-2. Permette di fare **scratch** sulla traccia.
-3. Ha un **crossfader** esposto come parametro AUv3, mappabile via MIDI in AUM (MIDI learn).
+## Vincoli
 
-## Vincoli del progetto
+- Costo zero. Niente Play Store per ora: APK installato a mano.
+- Si compila solo su **GitHub Actions** (repo pubblico): in questa sessione cloud `dl.google.com`/maven Google sono
+  bloccati, quindi niente Android SDK in locale. Il motore C++ invece si compila e si testa qui (clang, `tests/`).
+- Google "developer verification" per app fuori dal Play Store (2026 alcuni paesi, 2027 ovunque): da ricontrollare.
 
-- **Costo zero.** Niente Apple Developer Program a pagamento.
-- **Niente Xcode in locale:** si compila solo su GitHub Actions. Un Mac c'è, ma serve solo per la prima installazione di SideStore.
-- **Nessuna scheda audio per ora.** Quindi il DVS con timecode Serato NON è possibile ora: il timecode è un segnale audio e serve un ingresso stereo pulito.
-- **Controller: M-Audio X-Session Pro.** È solo MIDI via USB: niente audio interno, niente jog wheel. Ha fader, crossfader, manopole e pulsanti. Il suo crossfader fisico verrà mappato sul parametro crossfader del plugin. Per collegarlo all'iPad serve un adattatore USB, ed eventualmente un hub alimentato.
-- **Vuole un'app che funzioni davvero**, senza dover reinstallare a mano ogni settimana.
+## Grafica decisa (bozze in `design/`, sorgente `design/bozze.html`)
 
-## Percorso scelto: build e installazione gratis, senza Xcode
-
-1. **Codice** scritto qui, in un repository GitHub.
-2. **Progetto Xcode generato con XcodeGen** (`project.yml`): niente `.xcodeproj` scritto a mano, niente GUI di Xcode.
-3. **GitHub Actions** con runner `macos-latest` (gratuito per i repo pubblici):
-   - `xcodegen generate`
-   - `xcodebuild ... -sdk iphoneos CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO`
-   - impacchetta `Payload/ScratchAU.app` in uno zip → **`.ipa` non firmato** come artifact della build (e/o Release).
-4. **Installazione con SideStore (preferito) o AltStore**, firmando con l'**Apple ID gratuito** dell'utente. Questi strumenti rinnovano da soli la firma, che con un account gratuito dura 7 giorni.
-   - Limiti dell'account gratuito: max **3 app attive** sideloaded e **10 App ID a settimana**. App contenitore + estensione AU = 2 App ID.
-   - Verifica che l'estensione AUv3 venga firmata e registrata correttamente dopo il sideload, e che compaia in AUM.
+- Tema scuro **neutro** (grigi/bianco). Colore SOLO nelle **waveform** (deck A azzurro, deck B rosa, bande blu/colore/bianco
+  per bassi/medi/alti) e nel **centro dei dischi** (A azzurro, B rosa). Niente bottoni/scritte colorati per deck.
+- In alto: titolo, artista, BPM, tempo mancante per deck; logo; pulsanti libreria e opzioni.
+- **Waveform alte** (2 strisce, A sopra B), puntina fissa al centro, griglia battute, bandierine hot cue,
+  panoramica traccia sotto; pinch = zoom, trascinare = scratch (disattivabile).
+- Deck: disco touch (scratch), CUE / Play / SYNC, pad con tab HOT CUE · LOOP · FX; pitch verticale con valore,
+  escursione (±8/16/50) e tasto **KEY** (keylock).
+- Mixer (al centro, tab MIXER / FX): per canale GAIN (manopola piccola e sottile), HI/MID/LOW, FILTRO (manopola grande con
+  arco: sinistra LP, destra HP, centro spento). **Volumi al centro** ai lati del MASTER (manopola + meter), REC.
+- **Crossfader corto**, lettere A/B ai lati, sotto SOLO il simbolo della curva (taglio ⊓, lineare ×, morbida) in grigio,
+  stile scritte EQ; tocco = cambia curva. Inverti (hamster) nelle Opzioni / MIDI.
+- **FX**: un'unità per deck (FX · DECK A, FX · DECK B) con ON, scelta tra **ECHO, DUB DELAY, REVERB, STRETCH**,
+  manopole DRY/WET + parametri, riga tempo (battute) o rapporto (stretch ½× ¼× ⅛× FREEZE).
+  Pad FX del deck: tocco = on/off, tenere premuto = momentaneo. Keylock è separato (tasto KEY).
+- Libreria: Tutti i brani / Cartelle / Recenti / Playlist, ricerca, BPM calcolato, tasti A/B per caricare.
+- Opzioni: frizione slipmat, avvio, frenata, sensibilità piatto, scratch su waveform, escursione pitch, curva e inverti
+  crossfader, MIDI (X-Session, LEARN), audio (uscita, pre-ascolto con scheda USB).
 
 ## Architettura
 
-- **App contenitore** (minima): schermata con istruzioni d'uso e, se serve, import dei file.
-- **Estensione AUv3**:
-  - Tipo consigliato: **`aumf` (Music Effect)**, perché riceve MIDI e ha un ingresso audio. L'ingresso servirà in futuro per il DVS e per l'eventuale crossfade con l'audio in ingresso. In alternativa `augn` (generator) se `aumf` crea problemi in AUM.
-  - DSP in C/C++ (o Swift con molta attenzione) nel render block. **Regole real-time:** nessuna allocazione, nessun lock, nessun Objective-C/Swift ARC, nessun I/O nel render thread.
-  - UI in SwiftUI o UIKit dentro l'estensione.
+- `app/` Kotlin + Jetpack Compose (UI), `engine/` C++17 puro (nessuna dipendenza Android), `app/src/main/cpp/` ponte JNI
+  + uscita audio con **Oboe**. Regole real-time nel callback audio: niente allocazioni, lock, log, I/O, JNI.
+- Comandi UI → motore: parametri atomici / coda lock-free. Motore → UI: posizioni/livelli atomici letti a ogni frame.
+- Decodifica (MediaExtractor/MediaCodec) fuori dal thread audio → PCM 16 bit in memoria nativa; il deck legge alla
+  velocità `rate * fileRate / deviceRate` (niente ricampionamento al caricamento). Interpolazione Hermite.
+- Ogni deck ha una "sorgente di controllo" del movimento: motore, dito (touch), MIDI e in futuro **timecode (DVS)**.
+- Firma APK: chiave fissa nel secret GitHub `DJAAAY_KEYSTORE_B64` (così gli aggiornamenti si installano sopra).
 
-### Funzionalità MVP (Fase 1)
+## Tappe
 
-- **Caricamento file:** document picker (mp3/wav, anche m4a/aiff se gratis). Decodifica completa in memoria con `AVAudioFile` in float stereo, convertita al sample rate della sessione. Il caricamento avviene fuori dal render thread e il buffer viene passato al DSP con uno swap atomico.
-  - Rischio: presentare il document picker dall'interno di un'estensione AU. Se dà problemi, alternativa: import dall'app contenitore in un **App Group** condiviso. Le App Group con account gratuito + SideStore vanno verificate.
-  - Salvare la traccia nello stato del plugin (`fullState`) tramite bookmark, così AUM la ricarica con il preset/sessione.
-- **Piatto virtuale touch:**
-  - Disco che ruota a schermo. Toccandolo il dito "afferra" il disco: la velocità del dito diventa la velocità di riproduzione (anche negativa, all'indietro).
-  - Rilasciato, torna alla velocità normale con un'inerzia breve (motore).
-  - Pulsante **Play/Stop** con brake di avvio e arresto regolabile.
-  - Waveform o marker della posizione + **cue point** (tap per tornare al cue).
-- **Riproduzione a velocità variabile:** puntatore di lettura frazionario con interpolazione **Hermite/cubica**, e smoothing della velocità per evitare click. Gestire velocità ~0 senza rumore.
-- **Crossfader:** `AUParameter` (0…1) automatizzabile e mappabile MIDI in AUM. Curve selezionabili: **sharp/cut** (tipica da scratch), lineare, constant-power. Applicare uno smoothing minimo che non ammorbidisca troppo i tagli.
-  - **Domanda aperta per l'utente:** il crossfader sfuma tra **traccia ↔ ingresso audio (thru)** oppure tra **due deck** nel plugin? Default proposto per l'MVP: traccia ↔ ingresso thru, che con AUM permette di mixare con altre sorgenti.
-- **Altri parametri esposti (mappabili):** volume deck, pitch/tempo (±8/±16/±50%), play/stop, curva crossfader, eventualmente un "hamster switch" (inverti crossfader).
-- Esporre i parametri anche via **MIDI diretto (CC)** all'estensione, oltre al learn di AUM.
-
-### Fase 2 (futuro)
-
-- Supporto **jog wheel MIDI** (scratch da controller con jog, messaggi relativi).
-
-### Fase 3 (futuro, solo con hardware adatto)
-
-- **DVS con timecode Serato** (portante ~1 kHz stereo in quadratura + bit di posizione assoluta) letto dall'ingresso audio dell'estensione.
-- Iniziare in **modalità relativa** (velocità e direzione dalla fase della portante), poi aggiungere quella **assoluta**.
-- Riferimento: il decoder open source di **xwax** supporta i timecode Serato. È **GPL**: se si riusa il codice, il progetto diventa GPL (va bene per uso personale).
-- Richiede un mixer o una scheda audio class-compliant con ingressi phono/line stereo, più un vinile o CD timecode Serato.
-
-## Struttura repo suggerita
-
-```
-scratch-au/
-├── CLAUDE.md
-├── README.md                  # istruzioni per l'utente, in italiano
-├── project.yml                # XcodeGen
-├── App/                       # app contenitore
-├── Extension/                 # AUv3: AudioUnit, UI, Info.plist (AudioComponents)
-├── DSP/                       # C/C++: player, interpolazione, crossfader
-└── .github/workflows/build.yml
-```
-
-## Ordine di lavoro consigliato
-
-1. Chiedere all'utente le risposte alle domande aperte (sotto).
-2. Scaffold: `project.yml`, app vuota + estensione AUv3 che passa l'audio in thru, workflow GitHub Actions che produce l'`.ipa`.
-3. Guidare l'utente: creare l'account GitHub, caricare il repo, scaricare l'`.ipa`, installare SideStore, sideload, aprire AUM e verificare che il plugin compaia.
-4. Solo dopo che il "plugin vuoto" funziona sull'iPad: player + caricamento file → piatto touch → crossfader + parametri → rifiniture.
-5. Ad ogni passo: build in CI verde prima di chiedere all'utente di installare.
-
-## Decisioni prese (27/10/2026)
-
-- **Dispositivo:** iPad. **Computer:** Mac (per la prima installazione di SideStore con iloader).
-- **Repository:** repo GitHub **pubblico** separato (`toniaudio/scratch-au`), così le build su macOS sono gratis e senza limiti.
-- **Crossfader:** traccia ↔ ingresso audio (thru), un solo deck. 0 = solo traccia (sinistra), 1 = solo ingresso (destra).
-- Tipo AU `aumf`, manufacturer `Toni`, subtype `Scrt`, nome in AUM "Toniaudio: ScratchAU". Bundle ID `com.toniaudio.scratchau` (+ `.AUv3`).
-- Parametri (indirizzi fissi, non cambiarli: AUM salva le mappature MIDI per indirizzo): 0 Crossfader, 1 Curva (0 Taglio, 1 Lineare, 2 Potenza costante), 2 Inverti.
-- AU in Objective-C++ (`Extension/ScratchAudioUnit.mm`), finestra in Swift/UIKit, DSP in C++ puro (`DSP/`) testato anche su Linux (`tests/`).
-- Release fissa "ultima" con `ScratchAU.ipa`, ricreata a ogni push su main.
+1. Scheletro Android + CI che pubblica `Djaaay.apk` nella Release `ultima`. 
+2. Motore: 2 deck, scratch con frizione/motore, gain, EQ, filtro, volumi, crossfader, master. Test su Linux.
+3. Caricamento brani, waveform colorata con zoom, libreria, UI come da bozze, opzioni.
+4. BPM + beatgrid + SYNC, keylock. 5. Hot cue, loop. 6. FX (echo, dub delay, reverb, stretch).
+7. X-Session via USB MIDI con LEARN. 8. REC del mix.
+9. Futuro: scheda audio USB multicanale → pre-ascolto in cuffia; **DVS con timecode Serato** (decoder di xwax, GPL:
+   va bene, il repo è pubblico). Serve scheda class-compliant con 4 ingressi (meglio phono) + 4 uscite.
 
 ## Stato
 
-- Fase "plugin vuoto" scritta: thru + crossfader (curve, inverti, smoothing ~1 ms) + finestra con i controlli. Test DSP verdi.
-- Prossimo: build CI verde → installazione sull'iPad → verifica in AUM (plugin visibile, MIDI learn del crossfader). Poi player + caricamento file.
-
-## Richieste dell'utente per la fase 2 (27/10/2026)
-
-- **Waveform della traccia caricata**, visibile nella finestra del plugin:
-  - waveform che **scorre** con la **puntina** fissa al centro (linea verticale), come nei software DJ;
-  - **zoom** con il pizzico (pinch) delle dita;
-  - in più una panoramica di tutta la traccia con la posizione attuale (tocco = salto in quel punto, da valutare).
-  - Tecnica: picchi min/max calcolati al caricamento (fuori dal thread audio) a più livelli di zoom; posizione letta dal DSP
-    con un atomic e disegnata a ogni frame (CADisplayLink).
-- **Frizione del disco regolabile** (e in generale un pannello **Opzioni** con le cose personalizzabili).
-  - Le opzioni stanno **nella finestra del plugin** (icona ingranaggio), non nell'app contenitore: così vengono salvate con la
-    sessione di AUM (fullState) e non serve condividere dati tra app ed estensione (App Group incerti con SideStore).
-  - Opzioni previste: **frizione/slipmat** (quanto in fretta il disco rilasciato torna alla velocità del motore),
-    **avvio** e **frenata** del motore (Play/Stop), **sensibilità** del piatto touch, curva crossfader, inverti, pitch ±8/16/50%.
-
-## Domande aperte da fare all'utente (risposte sopra, in "Decisioni prese")
-
-- Usi un **iPad** o un **iPhone**? Che versione di iOS?
-- Hai accesso a un **computer** (Windows/Mac/Linux)? Serve per la prima configurazione di SideStore o AltStore.
-- Crossfader: **traccia ↔ ingresso** oppure **due deck**?
-- Ti basta un solo deck per lo scratch, con l'altra mano sul crossfader dell'X-Session?
+- 27/10/2026: bozze grafiche approvate (`design/`). Inizio tappa 1.
