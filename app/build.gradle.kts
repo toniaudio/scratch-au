@@ -10,6 +10,8 @@ val numeroBuild = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
 android {
     namespace = "com.toniaudio.djaaay"
     compileSdk = 35
+    // Su GitHub Actions si usano NDK e CMake già installati nel runner (scelti dal workflow)
+    System.getenv("DJAAAY_NDK")?.let { ndkVersion = it }
 
     defaultConfig {
         applicationId = "com.toniaudio.djaaay"
@@ -49,7 +51,7 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
+            System.getenv("DJAAAY_CMAKE")?.let { version = it }
         }
     }
 

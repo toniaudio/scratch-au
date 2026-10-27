@@ -48,6 +48,14 @@ jobs:
           else
             echo "::warning::Manca il secret DJAAAY_KEYSTORE_B64: l'APK è firmato con una chiave di prova e non viene pubblicato."
           fi
+      - name: NDK e CMake del runner
+        run: |
+          ls "$ANDROID_HOME/ndk" "$ANDROID_HOME/cmake" || true
+          NDK=$(ls "$ANDROID_HOME/ndk" | sort -V | tail -1)
+          CMAKE=$(ls "$ANDROID_HOME/cmake" | sort -V | tail -1)
+          echo "NDK $NDK, CMake $CMAKE"
+          echo "DJAAAY_NDK=$NDK" >> "$GITHUB_ENV"
+          echo "DJAAAY_CMAKE=$CMAKE" >> "$GITHUB_ENV"
       - name: Compila
         run: ./gradlew --no-daemon assembleRelease
       - name: Controlla l'APK
