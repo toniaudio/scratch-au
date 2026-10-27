@@ -11,6 +11,11 @@ on:
 permissions:
   contents: write
 
+# Due compilazioni insieme (push + avvio manuale) si contenderebbero la Release: una alla volta
+concurrency:
+  group: dvs-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   motore:
     runs-on: ubuntu-latest
@@ -31,6 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # serve tutta la storia per contare i commit (numero di versione)
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -48,8 +55,9 @@ jobs:
           else
             echo "::warning::Manca il secret DVS_KEYSTORE_B64: l'APK è firmato con una chiave di prova e non viene pubblicato."
           fi
-      - name: NDK e CMake del runner
+      - name: NDK e CMake del runner, numero di versione
         run: |
+          echo "DVS_VERSIONE=$((100 + $(git rev-list --count HEAD)))" >> "$GITHUB_ENV"
           ls "$ANDROID_HOME/ndk" "$ANDROID_HOME/cmake" || true
           NDK=$(ls "$ANDROID_HOME/ndk" | sort -V | tail -1)
           CMAKE=$(ls "$ANDROID_HOME/cmake" | sort -V | tail -1)

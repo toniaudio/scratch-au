@@ -172,6 +172,107 @@ static void testCueLoop() {
     verifica(!d.inPlay() && vicino(d.posizioneSecondi(), 30.0, 1e-3), "a fine brano il deck si ferma");
 }
 
+static void testRevisione() {
+    // Play premuto mentre si tiene CUE: lasciando CUE si continua a suonare
+    {
+        Motore m;
+        m.prepara(48000.0);
+        Deck& d = m.deck[0];
+        d.avvioSecondi = 0.0f;
+        d.carica(sinusoide(440.0, 30.0));
+        gira(m, 0.01);
+        d.invia(cmd(ComandoDeck::CueGiu));
+        gira(m, 0.2);
+        d.invia(cmd(ComandoDeck::PlayPausa));
+        d.invia(cmd(ComandoDeck::CueSu));
+        gira(m, 0.3);
+        verifica(d.inPlay() && d.posizioneSecondi() > 0.4, "Play mentre si tiene CUE: continua a suonare dopo CUE");
+    }
+    // Loop all'indietro: scratchando indietro dentro il loop si rientra dalla fine
+    {
+        Motore m;
+        m.prepara(48000.0);
+        Deck& d = m.deck[0];
+        d.carica(sinusoide(440.0, 30.0));
+        gira(m, 0.01);
+        d.invia(cmd(ComandoDeck::Vai, 10.2));
+        d.invia(cmd(ComandoDeck::Loop, 10.0, 11.0));
+        d.invia(cmd(ComandoDeck::ToccoInizio));
+        for (int i = 1; i <= 30; ++i) {
+            d.invia(cmd(ComandoDeck::ToccoSposta, -0.5 * i / 30.0));
+            gira(m, 0.01);
+        }
+        gira(m, 0.05);
+        const double p = d.posizioneSecondi();
+        verifica(p > 10.6 && p < 10.8, "scratch indietro oltre l'inizio del loop: si rientra dalla fine");
+        d.invia(cmd(ComandoDeck::ToccoFine));
+    }
+    // Loop accorciato mentre si è oltre la nuova fine: si rientra allo stesso punto della battuta
+    {
+        Motore m;
+        m.prepara(48000.0);
+        Deck& d = m.deck[0];
+        d.carica(sinusoide(440.0, 30.0));
+        gira(m, 0.01);
+        d.invia(cmd(ComandoDeck::Vai, 13.5));
+        d.invia(cmd(ComandoDeck::Loop, 10.0, 14.0));
+        d.invia(cmd(ComandoDeck::Loop, 10.0, 12.0));  // ◀: da 4 a 2
+        gira(m, 0.01);
+        verifica(vicino(d.posizioneSecondi(), 11.5, 0.01), "loop accorciato con le frecce: si rientra nel loop");
+    }
+    // Salto di posizione mentre il dito è sul disco: il disco resta dove è saltato
+    {
+        Motore m;
+        m.prepara(48000.0);
+        Deck& d = m.deck[0];
+        d.carica(sinusoide(440.0, 30.0));
+        gira(m, 0.01);
+        d.invia(cmd(ComandoDeck::ToccoInizio));
+        gira(m, 0.05);
+        d.invia(cmd(ComandoDeck::Vai, 10.0));
+        gira(m, 0.2);
+        verifica(vicino(d.posizioneSecondi(), 10.0, 0.01), "salto durante lo scratch: il dito non riporta indietro");
+    }
+    // Nessun click sui salti: dissolvenza di ~2 ms
+    {
+        Motore m;
+        m.prepara(48000.0);
+        Deck& d = m.deck[0];
+        d.avvioSecondi = 0.0f;
+        d.carica(sinusoide(100.0, 30.0));
+        m.mixer.crossfader = 0.0f;
+        d.invia(cmd(ComandoDeck::Play, 1.0));
+        gira(m, 0.5);
+        std::vector<float> out(2 * 512);
+        float salto = 0.0f, prec = 0.0f;
+        bool primo = true;
+        for (int blocco = 0; blocco < 20; ++blocco) {
+            if (blocco == 10) d.invia(cmd(ComandoDeck::Vai, 7.0037));  // fase della sinusoide diversa
+            m.render(out.data(), 512);
+            for (int i = 0; i < 512; ++i) {
+                if (!primo) salto = std::max(salto, std::fabs(out[2 * i] - prec));
+                prec = out[2 * i];
+                primo = false;
+            }
+        }
+        char testo[80];
+        std::snprintf(testo, sizeof testo, "salto di posizione senza click (salto massimo %.3f)", salto);
+        verifica(salto < 0.03f, testo);
+    }
+    // Caricamento a pezzi veloce (prima ogni pezzo ricopiava tutto il brano)
+    {
+        Traccia t;
+        std::vector<int16_t> pezzo(4096 * 2, 1000);
+        for (int i = 0; i < 3229; ++i) t.aggiungi(pezzo.data(), 4096, 2);  // 5 minuti
+        verifica(t.frame() == 3229LL * 4096 && t.pcm.capacity() < t.pcm.size() * 2 + 16,
+                 "caricamento a pezzi: dimensione giusta, memoria non sprecata");
+        Traccia mono;
+        const int16_t m3[3] = {1, 2, 3};
+        mono.aggiungi(m3, 3, 1);
+        verifica(mono.frame() == 3 && mono.pcm[2] == 2 && mono.pcm[3] == 2, "un file mono diventa stereo");
+    }
+}
+
 static void testMixer() {
     verifica(vicino(guadagniCrossfader(0.5f, kCurvaTaglio, false).a, 1.0, 1e-6) &&
                  vicino(guadagniCrossfader(0.5f, kCurvaTaglio, false).b, 1.0, 1e-6),
@@ -277,6 +378,7 @@ static void testWaveform() {
 int main() {
     testDeck();
     testCueLoop();
+    testRevisione();
     testMixer();
     testWaveform();
     std::printf(errori ? "\n%d ERRORI\n" : "\ntutto ok\n", errori);

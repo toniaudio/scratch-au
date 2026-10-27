@@ -15,6 +15,14 @@ inline float hermite(float ym1, float y0, float y1, float y2, float t) {
     return ((c3 * t + c2) * t + c1) * t + y0;
 }
 
+inline void leggi(const Traccia& t, double pos, float& l, float& r) {
+    const double p = std::floor(pos);
+    const int64_t k = static_cast<int64_t>(p);
+    const float fr = static_cast<float>(pos - p);
+    l = hermite(t.campione(k - 1, 0), t.campione(k, 0), t.campione(k + 1, 0), t.campione(k + 2, 0), fr);
+    r = hermite(t.campione(k - 1, 1), t.campione(k, 1), t.campione(k + 1, 1), t.campione(k + 2, 1), fr);
+}
+
 }  // namespace
 
 Deck::Deck() = default;
@@ -45,6 +53,17 @@ void Deck::raccogliTracceVecchie() {
     while (daLiberare_.ricevi(t)) delete t;
 }
 
+void Deck::salta(double nuovaPos) {
+    if (nuovaPos == pos_) return;
+    const double delta = nuovaPos - pos_;
+    posVecchia_ = pos_;
+    sfumaRestanti_ = kSfuma;
+    pos_ = nuovaPos;
+    // se il dito è sul disco, il suo riferimento si sposta insieme alla puntina
+    toccoAncora_ += delta;
+    toccoBersaglio_ += delta;
+}
+
 void Deck::applica(const ComandoDeck& c) {
     const double sr = traccia_ ? traccia_->sampleRate : srUscita_;
     switch (c.tipo) {
@@ -58,19 +77,25 @@ void Deck::applica(const ComandoDeck& c) {
             vel_ = 0.0;
             motore_ = anteprimaCue_ = scivola_ = tocco_ = loop_ = false;
             cue_ = 0.0;
+            sfumaRestanti_ = 0;
             break;
         case ComandoDeck::Play:
             anteprimaCue_ = false;
             motore_ = c.a > 0.5;
             break;
         case ComandoDeck::PlayPausa:
-            anteprimaCue_ = false;
-            motore_ = !motore_;
+            if (anteprimaCue_) {
+                // Play mentre si tiene CUE: si continua a suonare anche dopo aver lasciato CUE
+                anteprimaCue_ = false;
+                motore_ = true;
+            } else {
+                motore_ = !motore_;
+            }
             break;
         case ComandoDeck::CueGiu:
             if (motore_ && !anteprimaCue_) {
                 // in play: torna al cue e si ferma
-                pos_ = cue_;
+                salta(cue_);
                 motore_ = false;
                 vel_ = 0.0;
                 scivola_ = false;
@@ -88,11 +113,11 @@ void Deck::applica(const ComandoDeck& c) {
                 anteprimaCue_ = false;
                 motore_ = false;
                 vel_ = 0.0;
-                pos_ = cue_;
+                salta(cue_);
             }
             break;
         case ComandoDeck::Vai:
-            pos_ = c.a * sr;
+            salta(c.a * sr);
             break;
         case ComandoDeck::ToccoInizio:
             tocco_ = true;
@@ -129,6 +154,11 @@ void Deck::applica(const ComandoDeck& c) {
             loop_ = c.b > c.a;
             loopInizio_ = c.a * sr;
             loopFine_ = c.b * sr;
+            // loop accorciato (frecce) mentre si è già oltre la nuova fine: si rientra nel loop allo stesso punto della battuta
+            if (loop_ && pos_ >= loopFine_ && pos_ >= loopInizio_) {
+                const double lunghezza = loopFine_ - loopInizio_;
+                salta(loopInizio_ + std::fmod(pos_ - loopInizio_, lunghezza));
+            }
             break;
     }
 }
@@ -146,7 +176,7 @@ void Deck::render(float* l, float* r, int frame) {
 
     const Traccia& t = *traccia_;
     const double fine = static_cast<double>(t.frame());
-    const double velMotore = motore_ ? base_ * (1.0 + pitch.load(std::memory_order_relaxed)) : 0.0;
+    const double velNormale = base_ * (1.0 + pitch.load(std::memory_order_relaxed));
 
     // Frizione 0 → costante di tempo 0,6 s (scivola), 1 → 20 ms (riparte subito)
     const double f = std::clamp(static_cast<double>(frizione.load(std::memory_order_relaxed)), 0.0, 1.0);
@@ -160,7 +190,8 @@ void Deck::render(float* l, float* r, int frame) {
     const double soglia = 0.03 * base_;  // sotto questa velocità il suono sfuma (disco quasi fermo)
 
     for (int i = 0; i < frame; ++i) {
-        // --- velocità del disco
+        // --- velocità del disco (il motore può spegnersi a metà blocco, a fine brano)
+        const double velMotore = motore_ ? velNormale : 0.0;
         if (tocco_) {
             campioniDaUltimoTocco_ += 1.0;
             if (intervalloTocco_ > 0.0 && campioniDaUltimoTocco_ > 2.0 * intervalloTocco_) toccoVelBersaglio_ = 0.0;
@@ -185,12 +216,18 @@ void Deck::render(float* l, float* r, int frame) {
             }
         }
 
-        // --- lettura con interpolazione
-        const double p = std::floor(pos_);
-        const int64_t k = static_cast<int64_t>(p);
-        const float fr = static_cast<float>(pos_ - p);
-        float sl = hermite(t.campione(k - 1, 0), t.campione(k, 0), t.campione(k + 1, 0), t.campione(k + 2, 0), fr);
-        float sr = hermite(t.campione(k - 1, 1), t.campione(k, 1), t.campione(k + 1, 1), t.campione(k + 2, 1), fr);
+        // --- lettura con interpolazione (e dissolvenza se la puntina è appena saltata)
+        float sl, sr;
+        leggi(t, pos_, sl, sr);
+        if (sfumaRestanti_ > 0) {
+            float vl, vr;
+            leggi(t, posVecchia_, vl, vr);
+            const float w = static_cast<float>(sfumaRestanti_) / kSfuma;
+            sl += (vl - sl) * w;
+            sr += (vr - sr) * w;
+            posVecchia_ += vel_;
+            --sfumaRestanti_;
+        }
         const double av = std::fabs(vel_);
         if (av < soglia) {
             const float g = static_cast<float>(av / soglia);
@@ -200,9 +237,17 @@ void Deck::render(float* l, float* r, int frame) {
         l[i] = dcL_.processa(sl);
         r[i] = dcR_.processa(sr);
 
-        // --- avanzamento
+        // --- avanzamento; il loop vale nei due sensi, solo per chi ci sta dentro
+        const double prima = pos_;
         pos_ += vel_;
-        if (loop_ && vel_ > 0.0 && pos_ >= loopFine_) pos_ -= (loopFine_ - loopInizio_);
+        if (loop_) {
+            const double lunghezza = loopFine_ - loopInizio_;
+            if (vel_ > 0.0 && prima < loopFine_ && pos_ >= loopFine_ && prima >= loopInizio_) {
+                salta(pos_ - lunghezza);  // anche scratchando il dito resta agganciato
+            } else if (vel_ < 0.0 && prima >= loopInizio_ && pos_ < loopInizio_ && prima <= loopFine_) {
+                salta(pos_ + lunghezza);
+            }
+        }
         if (pos_ >= fine) {
             pos_ = fine;
             if (!tocco_) {

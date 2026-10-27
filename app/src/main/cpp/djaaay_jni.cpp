@@ -15,6 +15,8 @@ class Uscita : public oboe::AudioStreamDataCallback, public oboe::AudioStreamErr
 public:
     bool apri() {
         std::lock_guard<std::mutex> lock(mutex_);
+        // Se c'è già un flusso aperto (Activity ricreata) lo si chiude: due flussi suonerebbero insieme
+        chiudiSenzaLock();
         oboe::AudioStreamBuilder b;
         b.setDirection(oboe::Direction::Output)
             ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
@@ -37,6 +39,34 @@ public:
 
     void chiudi() {
         std::lock_guard<std::mutex> lock(mutex_);
+        chiudiSenzaLock();
+    }
+
+    int sampleRate() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return stream_ ? stream_->getSampleRate() : 0;
+    }
+
+    oboe::DataCallbackResult onAudioReady(oboe::AudioStream* s, void* dati, int32_t frame) override {
+        motore.render(static_cast<float*>(dati), frame, s->getChannelCount());
+        return oboe::DataCallbackResult::Continue;
+    }
+
+    // Cuffie/altoparlante/scheda USB cambiati: Oboe ha già chiuso il flusso, lo riapriamo sul nuovo dispositivo
+    void onErrorAfterClose(oboe::AudioStream* chiuso, oboe::Result errore) override {
+        if (errore != oboe::Result::ErrorDisconnected) return;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (stream_.get() != chiuso) return;  // nel frattempo l'app l'ha chiuso o riaperto lei
+            stream_.reset();
+        }
+        apri();
+    }
+
+    djaaay::Prova motore;
+
+private:
+    void chiudiSenzaLock() {
         if (stream_) {
             stream_->stop();
             stream_->close();
@@ -44,21 +74,6 @@ public:
         }
     }
 
-    int sampleRate() const { return stream_ ? stream_->getSampleRate() : 0; }
-
-    oboe::DataCallbackResult onAudioReady(oboe::AudioStream* s, void* dati, int32_t frame) override {
-        motore.render(static_cast<float*>(dati), frame, s->getChannelCount());
-        return oboe::DataCallbackResult::Continue;
-    }
-
-    // Cuffie/altoparlante cambiati: il flusso si chiude, lo riapriamo
-    void onErrorAfterClose(oboe::AudioStream*, oboe::Result errore) override {
-        if (errore == oboe::Result::ErrorDisconnected) apri();
-    }
-
-    djaaay::Prova motore;
-
-private:
     std::shared_ptr<oboe::AudioStream> stream_;
     std::mutex mutex_;
 };

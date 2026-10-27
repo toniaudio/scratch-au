@@ -68,6 +68,10 @@ public:
 
 private:
     void applica(const ComandoDeck& c);
+    // Sposta la puntina: breve dissolvenza dalla posizione vecchia (niente click) e il dito resta "agganciato".
+    void salta(double nuovaPos);
+
+    static constexpr int kSfuma = 96;  // ~2 ms di dissolvenza sui salti
 
     Coda<ComandoDeck, 256> comandi_;
     Coda<Traccia*, 16> daLiberare_;
@@ -90,6 +94,8 @@ private:
     double intervalloTocco_ = 0.0;
     bool loop_ = false;
     double loopInizio_ = 0.0, loopFine_ = 0.0;
+    double posVecchia_ = 0.0;   // durante la dissolvenza di un salto
+    int sfumaRestanti_ = 0;
     BloccaDC dcL_, dcR_;
 
     // Coefficienti (calcolati in prepara)

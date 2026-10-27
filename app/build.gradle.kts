@@ -4,8 +4,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-// Versione dell'app: il numero di build arriva da GitHub Actions (cresce a ogni compilazione)
-val numeroBuild = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInt()
+// Versione dell'app: 100 + numero di commit (lo calcola il workflow). Deve solo crescere, altrimenti
+// Android rifiuta l'aggiornamento; il numero dei run di GitHub ripartirebbe da 1 se il workflow cambiasse file.
+val numeroBuild = (System.getenv("DVS_VERSIONE") ?: "1").toInt()
 
 android {
     namespace = "com.toniaudio.djaaay"
@@ -43,7 +44,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 toglie il codice inutilizzato: APK da ~20 MB a pochi MB
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (chiave != null) signingConfigs.getByName("dvs") else signingConfigs.getByName("debug")
         }
     }
