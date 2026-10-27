@@ -28,7 +28,7 @@ Niente streaming (Spotify ecc.: impossibile senza accordi commerciali).
 - **Waveform alte** (2 strisce, A sopra B), puntina fissa al centro, griglia battute, bandierine hot cue,
   panoramica traccia sotto; pinch = zoom, trascinare = scratch (disattivabile).
 - Deck: disco touch (scratch), CUE / Play / SYNC, pad con tab HOT CUE · LOOP · FX; pitch verticale con valore,
-  escursione (±8/16/50), tasto **KEY** (keylock) e tasto **DVS**.
+  escursione (±8/16/50) e tasto **DVS**. Tasto **KEY** (keylock) in alto a sinistra del disco A e in alto a destra del disco B.
 - **DVS per deck** (richiesta 27/10): un solo segnale timecode (un giradischi) può comandare il deck A, il B o tutti e due
   insieme: ogni deck con DVS acceso segue il timecode, con DVS spento si usa normalmente (touch/MIDI). Scelta manuale.
 - Mixer (al centro, tab MIXER / FX): per canale GAIN (manopola piccola e sottile), HI/MID/LOW, FILTRO (manopola grande con

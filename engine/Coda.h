@@ -1,5 +1,5 @@
-// Coda di messaggi verso il thread audio: chi scrive (interfaccia, MIDI) prende un mutex tra sé,
-// il thread audio legge senza lock. Capacità fissa, nessuna allocazione dopo la costruzione.
+// Coda di messaggi tra thread: chi scrive (interfaccia, MIDI) prende un mutex tra sé, chi legge non prende lock.
+// Se scrive un solo thread (es. quello audio) si usa inviaSenzaLock(). Capacità fissa, nessuna allocazione dopo la costruzione.
 #pragma once
 
 #include <array>
@@ -24,7 +24,16 @@ public:
         return true;
     }
 
-    // Solo il thread che legge (audio).
+    // Variante senza lock per quando scrive un solo thread (es. il thread audio verso l'interfaccia).
+    bool inviaSenzaLock(const T& v) {
+        const size_t t = coda_.load(std::memory_order_relaxed);
+        if (t - testa_.load(std::memory_order_acquire) >= N) return false;
+        buf_[t & (N - 1)] = v;
+        coda_.store(t + 1, std::memory_order_release);
+        return true;
+    }
+
+    // Solo il thread che legge.
     bool ricevi(T& v) {
         const size_t h = testa_.load(std::memory_order_relaxed);
         if (h == coda_.load(std::memory_order_acquire)) return false;
