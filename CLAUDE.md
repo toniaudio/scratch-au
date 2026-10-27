@@ -104,6 +104,20 @@ scratch-au/
 - Fase "plugin vuoto" scritta: thru + crossfader (curve, inverti, smoothing ~1 ms) + finestra con i controlli. Test DSP verdi.
 - Prossimo: build CI verde → installazione sull'iPad → verifica in AUM (plugin visibile, MIDI learn del crossfader). Poi player + caricamento file.
 
+## Richieste dell'utente per la fase 2 (27/10/2026)
+
+- **Waveform della traccia caricata**, visibile nella finestra del plugin:
+  - waveform che **scorre** con la **puntina** fissa al centro (linea verticale), come nei software DJ;
+  - **zoom** con il pizzico (pinch) delle dita;
+  - in più una panoramica di tutta la traccia con la posizione attuale (tocco = salto in quel punto, da valutare).
+  - Tecnica: picchi min/max calcolati al caricamento (fuori dal thread audio) a più livelli di zoom; posizione letta dal DSP
+    con un atomic e disegnata a ogni frame (CADisplayLink).
+- **Frizione del disco regolabile** (e in generale un pannello **Opzioni** con le cose personalizzabili).
+  - Le opzioni stanno **nella finestra del plugin** (icona ingranaggio), non nell'app contenitore: così vengono salvate con la
+    sessione di AUM (fullState) e non serve condividere dati tra app ed estensione (App Group incerti con SideStore).
+  - Opzioni previste: **frizione/slipmat** (quanto in fretta il disco rilasciato torna alla velocità del motore),
+    **avvio** e **frenata** del motore (Play/Stop), **sensibilità** del piatto touch, curva crossfader, inverti, pitch ±8/16/50%.
+
 ## Domande aperte da fare all'utente (risposte sopra, in "Decisioni prese")
 
 - Usi un **iPad** o un **iPhone**? Che versione di iOS?
