@@ -12,6 +12,11 @@ object Motore {
     external fun sampleRate(): Int
     external fun tonoProva(acceso: Boolean)
 
+    /** KEY: con il keylock acceso cambiando il pitch cambia solo la velocità, non il tono. deck 0 = A, 1 = B. */
+    external fun keylock(deck: Int, acceso: Boolean)
+    /** Pitch del deck: −0,5…+0,5 (0,08 = +8%). */
+    external fun pitch(deck: Int, valore: Float)
+
     /** Buffer = multiplo × burst del dispositivo: più piccolo = meno ritardo, più grande = più stabile. */
     external fun impostaBuffer(multiplo: Int)
     external fun diagnostica(): String

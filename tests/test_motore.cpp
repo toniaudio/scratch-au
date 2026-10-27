@@ -474,6 +474,144 @@ static void testWaveform() {
     delete t;
 }
 
+// Frequenza dominante stimata contando i passaggi per lo zero (canale sinistro)
+static double frequenza(const std::vector<float>& stereo, double sr) {
+    int passaggi = 0;
+    for (size_t i = 2; i < stereo.size(); i += 2)
+        if (stereo[i - 2] < 0.0f && stereo[i] >= 0.0f) ++passaggi;
+    return passaggi * sr / (stereo.size() / 2.0);
+}
+
+// Brano di silenzio con un "colpo" (5 ms di 2 kHz) ogni mezzo secondo: serve a misurare l'allineamento nel tempo
+static Traccia* colpi(double secondi, double sr = 48000.0) {
+    auto* t = new Traccia();
+    t->sampleRate = sr;
+    const int64_t n = static_cast<int64_t>(secondi * sr);
+    std::vector<int16_t> buf(static_cast<size_t>(n) * 2, 0);
+    for (int64_t i = 0; i < n; ++i) {
+        const double inMezzo = std::fmod(i / sr, 0.5);
+        if (inMezzo < 0.005) {
+            const auto v = static_cast<int16_t>(16000 * std::sin(2.0 * M_PI * 2000.0 * i / sr));
+            buf[static_cast<size_t>(i) * 2] = buf[static_cast<size_t>(i) * 2 + 1] = v;
+        }
+    }
+    t->aggiungi(buf.data(), n, 2);
+    return t;
+}
+
+static void testKeylock() {
+    // 1) tono: pitch +8% su un 1000 Hz → senza keylock ~1080 Hz, con keylock ~1000 Hz
+    for (bool key : {false, true}) {
+        Motore m;
+        m.prepara(48000.0);
+        Deck& d = m.deck[0];
+        d.avvioSecondi = 0.0f;
+        d.carica(sinusoide(1000.0, 30.0, 48000.0, 0.5f));
+        d.pitch = 0.08f;
+        d.keylock = key;
+        m.mixer.crossfader = 0.0f;
+        m.mixer.canale[0].volume = 1.0f;
+        m.mixer.master = 1.0f;
+        d.invia(cmd(ComandoDeck::Play, 1.0));
+        gira(m, 1.0);
+        std::vector<float> out(2 * 48000);
+        m.render(out.data(), 48000);
+        const double f = frequenza(out, 48000.0);
+        char testo[96];
+        std::snprintf(testo, sizeof testo, "pitch +8%% %s keylock: %.0f Hz (atteso %s)", key ? "con" : "senza", f,
+                      key ? "1000" : "1080");
+        verifica(key ? vicino(f, 1000.0, 10.0) : vicino(f, 1080.0, 10.0), testo);
+        if (key) verifica(d.keylockInUso(), "keylock in uso mentre il disco gira al motore");
+        if (key) verifica(vicino(d.velocita(), 1.08, 1e-3), "con keylock la velocità resta +8%");
+    }
+
+    // 2) allineamento: il colpo deve uscire nello stesso istante con e senza keylock (ritardo compensato)
+    long momento[2] = {-1, -1};
+    for (int k = 0; k < 2; ++k) {
+        Motore m;
+        m.prepara(48000.0);
+        Deck& d = m.deck[0];
+        d.avvioSecondi = 0.0f;
+        d.carica(colpi(20.0));
+        d.keylock = (k == 1);
+        m.mixer.crossfader = 0.0f;
+        m.mixer.canale[0].volume = 1.0f;
+        m.mixer.master = 1.0f;
+        d.invia(cmd(ComandoDeck::Vai, 2.55));  // a deck fermo: la dissolvenza del salto è muta
+        gira(m, 0.05);
+        d.invia(cmd(ComandoDeck::Play, 1.0));
+        std::vector<float> out(2 * 48000);
+        m.render(out.data(), 48000);  // da 2,55 s: il colpo dei 3,0 s arriva dopo 0,45 s = 21600 campioni
+        for (long i = 0; i < 48000 && momento[k] < 0; ++i)
+            if (std::fabs(out[2 * i]) > 0.1f) momento[k] = i;
+        if (k == 1) verifica(d.keylockInUso(), "keylock in uso durante la misura dell'allineamento");
+    }
+    char testo[112];
+    std::snprintf(testo, sizeof testo, "keylock allineato alla puntina (colpo a %ld vs %ld campioni)", momento[1], momento[0]);
+    verifica(std::labs(momento[0] - 21600) < 48 && std::labs(momento[1] - momento[0]) < 240, testo);
+
+    // 3) accenderlo mentre suona: niente click; 4) dito sul disco: keylock da parte
+    {
+        Motore m;
+        m.prepara(48000.0);
+        Deck& d = m.deck[0];
+        d.avvioSecondi = 0.0f;
+        d.carica(sinusoide(200.0, 30.0, 48000.0, 0.4f));
+        d.pitch = 0.05f;
+        m.mixer.crossfader = 0.0f;
+        m.mixer.canale[0].volume = 1.0f;
+        m.mixer.master = 1.0f;
+        d.invia(cmd(ComandoDeck::Play, 1.0));
+        gira(m, 0.5);
+        std::vector<float> out(2 * 256);
+        float prec = 0.0f, salto = 0.0f;
+        for (int b = 0; b < 400; ++b) {
+            if (b == 50) d.keylock = true;
+            m.render(out.data(), 256);
+            for (int i = 0; i < 256; ++i) {
+                if (b > 0 || i > 0) salto = std::max(salto, std::fabs(out[2 * i] - prec));
+                prec = out[2 * i];
+            }
+        }
+        std::snprintf(testo, sizeof testo, "accendere il keylock mentre suona: niente click (%.4f)", salto);
+        verifica(salto < 0.03f && d.keylockInUso(), testo);
+        d.invia(cmd(ComandoDeck::ToccoInizio));
+        gira(m, 0.05);
+        verifica(!d.keylockInUso(), "dito sul disco: il keylock si fa da parte (scratch naturale)");
+        d.invia(cmd(ComandoDeck::ToccoFine));
+        gira(m, 1.5);
+        verifica(d.keylockInUso(), "rilasciato il disco il keylock torna");
+    }
+
+    // 5) loop con keylock: continua a suonare, niente buchi
+    {
+        Motore m;
+        m.prepara(48000.0);
+        Deck& d = m.deck[0];
+        d.avvioSecondi = 0.0f;
+        d.carica(sinusoide(300.0, 30.0, 48000.0, 0.4f));
+        d.keylock = true;
+        d.pitch = 0.04f;
+        m.mixer.crossfader = 0.0f;
+        m.mixer.canale[0].volume = 1.0f;
+        m.mixer.master = 1.0f;
+        d.invia(cmd(ComandoDeck::Play, 1.0));
+        gira(m, 1.0);
+        d.invia(cmd(ComandoDeck::Loop, 2.0, 3.0));
+        std::vector<float> out(2 * 480);
+        float minimo = 1.0f;
+        for (int b = 0; b < 300; ++b) {  // 3 secondi
+            m.render(out.data(), 480);
+            float p = 0.0f;
+            for (float v : out) p = std::max(p, std::fabs(v));
+            if (b > 20) minimo = std::min(minimo, p);
+        }
+        const double pos = d.posizioneSecondi();
+        std::snprintf(testo, sizeof testo, "loop con keylock: resta nel loop (%.2f s) e suona sempre (minimo %.2f)", pos, minimo);
+        verifica(pos >= 2.0 && pos < 3.0 && minimo > 0.2f, testo);
+    }
+}
+
 static std::string fileTemporaneo(const char* nome) {
     const char* dir = std::getenv("TMPDIR");
     return std::string(dir ? dir : "/tmp") + "/" + nome;
@@ -557,6 +695,7 @@ int main() {
     testAntiAliasing();
     testMixer();
     testWaveform();
+    testKeylock();
     testCacheWaveform();
     testRegistrazione();
     std::printf(errori ? "\n%d ERRORI\n" : "\ntutto ok\n", errori);

@@ -86,6 +86,8 @@ class MainActivity : ComponentActivity() {
         var rec by remember { mutableStateOf(Registrazione.attiva) }
         var fileRec by remember { mutableStateOf(Registrazione.nomeFile) }
         var multiplo by remember { mutableIntStateOf(2) }
+        var key by remember { mutableStateOf(false) }
+        var pitch by remember { mutableIntStateOf(0) }
         var diagnostica by remember { mutableStateOf("") }
 
         LaunchedEffect(Unit) {
@@ -105,6 +107,22 @@ class MainActivity : ComponentActivity() {
                 )
                 Button(onClick = { tono = !tono; Motore.tonoProva(tono) }) {
                     Text(if (tono) "Ferma il tono di prova" else "Suona un tono di prova")
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Pitch", color = Testo)
+                    Spacer(Modifier.width(12.dp))
+                    for (p in listOf(-8, 0, 8)) {
+                        OutlinedButton(
+                            onClick = { pitch = p; Motore.pitch(0, p / 100f) },
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = if (p == pitch) Verde else Spento),
+                        ) { Text(if (p > 0) "+$p%" else "$p%") }
+                        Spacer(Modifier.width(6.dp))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    OutlinedButton(
+                        onClick = { key = !key; Motore.keylock(0, key) },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = if (key) Verde else Spento),
+                    ) { Text("🔒 KEY") }
                 }
                 Button(
                     onClick = {

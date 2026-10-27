@@ -20,4 +20,5 @@ Per aggiornare: scarica di nuovo `DVS.apk` e installalo sopra. Le tue impostazio
 - `app/` – app Android (Kotlin, Jetpack Compose). `app/src/main/cpp/` – ponte JNI e uscita audio con Oboe.
 - `engine/` – motore audio in C++17 senza dipendenze Android; `tests/` lo prova anche su Linux.
 - `.github/workflows/android.yml` – test, compilazione, firma (secret `DVS_KEYSTORE_B64`), Release "ultima".
+- `engine/terzi/` – librerie di terzi: Signalsmith Stretch e Signalsmith Linear (licenza MIT) per il keylock.
 - Il vecchio plugin AUv3 per iPad (ScratchAU) è nel ramo `ios-scratchau`.

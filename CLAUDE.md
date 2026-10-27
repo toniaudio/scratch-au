@@ -100,8 +100,13 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
   via MediaStore), waveform salvabile (`salvaWaveform`/`caricaWaveform`), diagnostica (ritardo, xrun, carico, buffer
   1×/2×/4×), servizio in primo piano `ServizioAudio` (mediaPlayback), motore vero collegato al JNI (tono di prova =
   brano di 8 s in loop nel deck A).
-- **Keylock: in sospeso.** Proposta Signalsmith Stretch (MIT); scaricare/inserire codice esterno richiede il permesso
-  esplicito dell'utente (bloccato dal controllo di sicurezza della sessione). In alternativa: keylock scritto da noi.
+- **Keylock fatto** (27/10/2026) con Signalsmith Stretch 1.3.2 (MIT, `engine/terzi/`, inserita col consenso esplicito
+  dell'utente). `Keylock` corregge il tono dell'uscita varispeed (trasposizione 1/(1+pitch)); il deck legge in anticipo
+  del ritardo della libreria (blocco 80 ms, passo 20 ms, splitComputation) così l'uscita resta allineata alla puntina
+  (test: colpo allo stesso campione con e senza keylock). Loop previsti nella lettura anticipata; durante scratch,
+  frenate, avvii e per ~120 ms dopo un salto si usa il suono diretto con dissolvenza di 10 ms.
+  `splitComputation` è indispensabile: senza, ogni 20 ms un blocco audio impiegava fino a 1–4 ms (su 2 ms disponibili).
+  Carico misurato (server): 2 deck con keylock ≈ 4% di un core, 99,9% dei blocchi da 2 ms sotto 0,3 ms.
 - Prossimo: tappa 3 (caricamento brani, waveform, UI come da bozze).
 
 ## Da ricordare (scelte tecniche)

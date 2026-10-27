@@ -10,9 +10,11 @@
 
 #include <atomic>
 #include <cstdint>
+#include <vector>
 
 #include "Coda.h"
 #include "Filtri.h"
+#include "Keylock.h"
 #include "Traccia.h"
 
 namespace djaaay {
@@ -55,6 +57,7 @@ public:
     std::atomic<float> frizione{0.35f};      // 0 = il disco scivola a lungo, 1 = riparte subito
     std::atomic<float> avvioSecondi{0.15f};
     std::atomic<float> frenataSecondi{0.40f};
+    std::atomic<bool> keylock{false};        // KEY: cambiando il pitch il tono resta quello originale
 
     // Letture per l'interfaccia (aggiornate a ogni blocco)
     double posizioneSecondi() const { return posizione_.load(std::memory_order_relaxed); }
@@ -62,14 +65,18 @@ public:
     float velocita() const { return velocitaLetta_.load(std::memory_order_relaxed); }  // 1 = normale
     bool inPlay() const { return motoreLetto_.load(std::memory_order_relaxed); }
     double cueSecondi() const { return cueLetto_.load(std::memory_order_relaxed); }
+    bool keylockInUso() const { return keylockInUso_.load(std::memory_order_relaxed); }  // false durante scratch
 
     // Thread audio: scrive `frame` campioni stereo non interleaved in l, r.
     void render(float* l, float* r, int frame);
 
 private:
+    static constexpr int kMaxBlocco = 256;
+    void renderBlocco(float* l, float* r, int frame);
     void applica(const ComandoDeck& c);
     // Sposta la puntina: breve dissolvenza dalla posizione vecchia (niente click) e il dito resta "agganciato".
-    void salta(double nuovaPos);
+    // `perKeylock`: il keylock, che legge in anticipo, deve ripartire (non serve per il giro del loop, che prevede).
+    void salta(double nuovaPos, bool perKeylock = true);
 
     static constexpr int kSfuma = 96;  // ~2 ms di dissolvenza sui salti
 
@@ -99,6 +106,16 @@ private:
     int sfumaRestanti_ = 0;
     BloccaDC dcL_, dcR_;
 
+    // Keylock: legge il brano in anticipo del suo ritardo, così l'uscita resta allineata alla puntina
+    Keylock keylock_;
+    std::vector<float> kInL_, kInR_, kOutL_, kOutR_, kPeso_;
+    bool keylockAcceso_ = false;
+    double ritardoKey_ = 0.0;
+    int64_t caldoKey_ = 0;       // campioni dati al keylock da quando è acceso
+    int64_t attesaKey_ = 0;      // dopo un salto si usa il suono diretto finché il keylock non ha l'audio nuovo
+    float pesoKey_ = 0.0f;       // 0 = suono diretto, 1 = keylock (dissolvenza tra i due)
+    float coeffPesoKey_ = 0.0f;
+
     // Coefficienti (calcolati in prepara)
     double segui_ = 0.0;       // smoothing della velocità mentre si segue il dito
     double ritardoTocco_ = 0.0;
@@ -108,6 +125,7 @@ private:
     std::atomic<float> velocitaLetta_{0.0f};
     std::atomic<bool> motoreLetto_{false};
     std::atomic<double> cueLetto_{0.0};
+    std::atomic<bool> keylockInUso_{false};
 };
 
 }  // namespace djaaay

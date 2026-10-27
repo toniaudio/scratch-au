@@ -93,11 +93,13 @@ public:
                       "Interruzioni del suono: %s\n"
                       "Carico audio: %.0f%% (picco %.0f%%)\n"
                       "Modo: %s, %s\n"
+                      "Keylock deck A: %s\n"
                       "REC: %s",
                       sr, buffer, multiplo_, burst, 1000.0 * buffer / sr, testoLatenza.c_str(), testoXrun.c_str(),
                       100.0f * caricoUltimo_.load(), 100.0f * caricoPicco_.exchange(0.0f),
                       stream_->getAudioApi() == oboe::AudioApi::AAudio ? "AAudio" : "OpenSL ES",
                       stream_->getSharingMode() == oboe::SharingMode::Exclusive ? "esclusivo" : "condiviso",
+                      !motore.deck[0].keylock.load() ? "spento" : motore.deck[0].keylockInUso() ? "in uso" : "acceso, in attesa",
                       testoRec.c_str());
         return testo;
     }
@@ -206,6 +208,14 @@ JNIEXPORT jint JNICALL Java_com_toniaudio_djaaay_Motore_sampleRate(JNIEnv*, jobj
 
 JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_tonoProva(JNIEnv*, jobject, jboolean acceso) {
     uscita()->tonoProva(acceso == JNI_TRUE);
+}
+
+JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_keylock(JNIEnv*, jobject, jint deck, jboolean acceso) {
+    if (deck >= 0 && deck < 2) uscita()->motore.deck[deck].keylock.store(acceso == JNI_TRUE);
+}
+
+JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_pitch(JNIEnv*, jobject, jint deck, jfloat valore) {
+    if (deck >= 0 && deck < 2) uscita()->motore.deck[deck].pitch.store(std::clamp(valore, -0.5f, 0.5f));
 }
 
 JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaBuffer(JNIEnv*, jobject, jint multiplo) {

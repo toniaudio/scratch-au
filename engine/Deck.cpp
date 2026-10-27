@@ -61,6 +61,12 @@ void Deck::prepara(double sampleRateUscita) {
     base_ = traccia_ ? traccia_->sampleRate / srUscita_ : 1.0;
     segui_ = std::exp(-1.0 / (0.002 * srUscita_));
     ritardoTocco_ = 0.006 * srUscita_;
+    keylock_.prepara(srUscita_);
+    ritardoKey_ = keylock_.ritardo();
+    for (auto* v : {&kInL_, &kInR_, &kOutL_, &kOutR_, &kPeso_}) v->assign(kMaxBlocco, 0.0f);
+    coeffPesoKey_ = static_cast<float>(std::exp(-1.0 / (0.01 * srUscita_)));
+    keylockAcceso_ = false;
+    pesoKey_ = 0.0f;
 }
 
 void Deck::carica(Traccia* t) {
@@ -75,8 +81,9 @@ void Deck::raccogliTracceVecchie() {
     while (daLiberare_.ricevi(t)) delete t;
 }
 
-void Deck::salta(double nuovaPos) {
+void Deck::salta(double nuovaPos, bool perKeylock) {
     if (nuovaPos == pos_) return;
+    if (perKeylock) attesaKey_ = keylock_.riscaldamento();
     const double delta = nuovaPos - pos_;
     posVecchia_ = pos_;
     sfumaRestanti_ = kSfuma;
@@ -173,6 +180,8 @@ void Deck::applica(const ComandoDeck& c) {
             cue_ = c.a * sr;
             break;
         case ComandoDeck::Loop:
+            // il keylock ha già letto in anticipo oltre la fine del loop nuovo: riparte
+            attesaKey_ = keylock_.riscaldamento();
             loop_ = c.b > c.a;
             loopInizio_ = c.a * sr;
             loopFine_ = c.b * sr;
@@ -188,7 +197,11 @@ void Deck::applica(const ComandoDeck& c) {
 void Deck::render(float* l, float* r, int frame) {
     ComandoDeck c;
     while (comandi_.ricevi(c)) applica(c);
+    for (int fatti = 0; fatti < frame; fatti += kMaxBlocco)
+        renderBlocco(l + fatti, r + fatti, std::min(kMaxBlocco, frame - fatti));
+}
 
+void Deck::renderBlocco(float* l, float* r, int frame) {
     if (traccia_ == nullptr) {
         std::fill(l, l + frame, 0.0f);
         std::fill(r, r + frame, 0.0f);
@@ -210,6 +223,15 @@ void Deck::render(float* l, float* r, int frame) {
     const double passoAvvio = avvio > 0.0 ? base_ / (avvio * srUscita_) : 1e9;
     const double passoFrenata = frenata > 0.0 ? base_ / (frenata * srUscita_) : 1e9;
     const double soglia = 0.03 * base_;  // sotto questa velocità il suono sfuma (disco quasi fermo)
+
+    const bool vuoleKey = keylock.load(std::memory_order_relaxed);
+    if (vuoleKey != keylockAcceso_) {
+        keylockAcceso_ = vuoleKey;
+        if (vuoleKey) {
+            keylock_.azzera();
+            caldoKey_ = 0;
+        }
+    }
 
     for (int i = 0; i < frame; ++i) {
         // --- velocità del disco (il motore può spegnersi a metà blocco, a fine brano)
@@ -264,8 +286,22 @@ void Deck::render(float* l, float* r, int frame) {
             sl *= g * g;
             sr *= g * g;
         }
-        l[i] = dcL_.processa(sl);
-        r[i] = dcR_.processa(sr);
+        l[i] = sl;
+        r[i] = sr;
+
+        if (keylockAcceso_) {
+            // dove sarà la puntina tra "ritardo" campioni (anche facendo il giro del loop)
+            double avanti = pos_ + ritardoKey_ * vel_;
+            if (loop_ && vel_ > 0.0 && pos_ >= loopInizio_ && pos_ < loopFine_ && avanti >= loopFine_)
+                avanti = loopInizio_ + std::fmod(avanti - loopInizio_, loopFine_ - loopInizio_);
+            leggiFiltrato(t, avanti, passo, kInL_[i], kInR_[i]);
+            // keylock solo a velocità di motore: durante scratch, frenate e avvii si sente il disco "vero"
+            const bool usa = caldoKey_ + i >= keylock_.riscaldamento() && attesaKey_ <= 0 && motore_ && !tocco_ &&
+                             !scivola_ && std::fabs(vel_ - velMotore) < 0.01 * base_;
+            pesoKey_ = (usa ? 1.0f : 0.0f) + (pesoKey_ - (usa ? 1.0f : 0.0f)) * coeffPesoKey_;
+            kPeso_[i] = pesoKey_;
+            if (attesaKey_ > 0) --attesaKey_;
+        }
 
         // --- avanzamento; il loop vale nei due sensi, solo per chi ci sta dentro
         const double prima = pos_;
@@ -273,9 +309,9 @@ void Deck::render(float* l, float* r, int frame) {
         if (loop_) {
             const double lunghezza = loopFine_ - loopInizio_;
             if (vel_ > 0.0 && prima < loopFine_ && pos_ >= loopFine_ && prima >= loopInizio_) {
-                salta(pos_ - lunghezza);  // anche scratchando il dito resta agganciato
+                salta(pos_ - lunghezza, false);  // anche scratchando il dito resta agganciato
             } else if (vel_ < 0.0 && prima >= loopInizio_ && pos_ < loopInizio_ && prima <= loopFine_) {
-                salta(pos_ + lunghezza);
+                salta(pos_ + lunghezza, false);
             }
         }
         if (pos_ >= fine) {
@@ -288,6 +324,23 @@ void Deck::render(float* l, float* r, int frame) {
             pos_ = -60.0 * t.sampleRate;
         }
     }
+
+    if (keylockAcceso_) {
+        const float trasposizione = static_cast<float>(base_ / std::max(velNormale, 0.05 * base_));
+        keylock_.processa(kInL_.data(), kInR_.data(), kOutL_.data(), kOutR_.data(), frame, trasposizione);
+        caldoKey_ += frame;
+        for (int i = 0; i < frame; ++i) {
+            l[i] += (kOutL_[i] - l[i]) * kPeso_[i];
+            r[i] += (kOutR_[i] - r[i]) * kPeso_[i];
+        }
+    } else {
+        pesoKey_ = 0.0f;
+    }
+    for (int i = 0; i < frame; ++i) {
+        l[i] = dcL_.processa(l[i]);
+        r[i] = dcR_.processa(r[i]);
+    }
+    keylockInUso_.store(keylockAcceso_ && pesoKey_ > 0.5f, std::memory_order_relaxed);
 
     posizione_.store(pos_ / t.sampleRate, std::memory_order_relaxed);
     durata_.store(t.secondi(), std::memory_order_relaxed);
