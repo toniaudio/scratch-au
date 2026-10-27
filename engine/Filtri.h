@@ -32,12 +32,22 @@ public:
         hp = x - k_ * v1 - v2;
     }
 
+    // Passa-tutto: stesso volume a tutte le frequenze, cambia solo la fase.
+    float passaTutto(float x) {
+        const float v3 = x - ic2_;
+        const float v1 = a1_ * ic1_ + a2_ * v3;
+        const float v2 = ic2_ + a2_ * ic1_ + a3_ * v3;
+        ic1_ = 2.0f * v1 - ic1_;
+        ic2_ = 2.0f * v2 - ic2_;
+        return x - 2.0f * k_ * v1;
+    }
+
 private:
     float g_ = 0.0f, k_ = 1.4142f, a1_ = 1.0f, a2_ = 0.0f, a3_ = 0.0f;
     float ic1_ = 0.0f, ic2_ = 0.0f;
 };
 
-// Linkwitz-Riley del 4° ordine (due Butterworth in cascata): separa le bande dell'EQ.
+// Linkwitz-Riley del 4° ordine (due Butterworth in cascata): passa-basso e passa-alto complementari.
 class CrossoverLR4 {
 public:
     void imposta(float frequenza, float sampleRate) {
@@ -46,23 +56,44 @@ public:
     void azzera() {
         for (auto* f : {&lp1_, &lp2_, &hp1_, &hp2_}) f->azzera();
     }
-    float bassi(float x) {
-        float lp, hp;
-        lp1_.processa(x, lp, hp);
-        float lp2, hp2;
-        lp2_.processa(lp, lp2, hp2);
-        return lp2;
-    }
-    float alti(float x) {
-        float lp, hp;
-        hp1_.processa(x, lp, hp);
-        float lp2, hp2;
-        hp2_.processa(hp, lp2, hp2);
-        return hp2;
+    void separa(float x, float& basso, float& alto) {
+        float lp, hp, scarto;
+        lp1_.processa(x, lp, scarto);
+        lp2_.processa(lp, basso, scarto);
+        hp1_.processa(x, scarto, hp);
+        hp2_.processa(hp, scarto, alto);
     }
 
 private:
     FiltroSVF lp1_, lp2_, hp1_, hp2_;
+};
+
+// Separatore a 3 bande da mixer DJ ("isolatore"): bassi | medi | alti con crossover LR4.
+// Con i tre guadagni a 1 la somma ha lo stesso volume dell'ingresso a tutte le frequenze (cambia solo la fase),
+// e mettendo una banda a 0 quella banda sparisce davvero (kill).
+class Isolatore3 {
+public:
+    void imposta(float frequenzaBassi, float frequenzaAlti, float sampleRate) {
+        x1_.imposta(frequenzaBassi, sampleRate);
+        x2_.imposta(frequenzaAlti, sampleRate);
+        compensa_.imposta(frequenzaAlti, 0.70710678f, sampleRate);
+    }
+    void azzera() {
+        x1_.azzera();
+        x2_.azzera();
+        compensa_.azzera();
+    }
+    void separa(float x, float& bassi, float& medi, float& alti) {
+        float b, resto;
+        x1_.separa(x, b, resto);
+        x2_.separa(resto, medi, alti);
+        // i bassi passano dallo stesso passa-tutto che il crossover degli alti applica al resto
+        bassi = compensa_.passaTutto(b);
+    }
+
+private:
+    CrossoverLR4 x1_, x2_;
+    FiltroSVF compensa_;
 };
 
 // Toglie la componente continua (es. disco fermo su un campione diverso da zero).

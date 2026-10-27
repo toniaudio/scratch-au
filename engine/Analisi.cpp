@@ -26,17 +26,15 @@ Waveform analizzaWaveform(const Traccia& t) {
     base.alti.resize(static_cast<size_t>(colonne));
 
     // Stesse bande dell'EQ del mixer (250 Hz e 2,5 kHz), sul mono L+R
-    CrossoverLR4 xb, xa;
-    xb.imposta(250.0f, static_cast<float>(t.sampleRate));
-    xa.imposta(2500.0f, static_cast<float>(t.sampleRate));
+    Isolatore3 eq;
+    eq.imposta(250.0f, 2500.0f, static_cast<float>(t.sampleRate));
     for (int64_t c = 0; c < colonne; ++c) {
         float pb = 0.0f, pm = 0.0f, pa = 0.0f;
         const int64_t fine = std::min(n, (c + 1) * Waveform::kFramePerColonna);
         for (int64_t i = c * Waveform::kFramePerColonna; i < fine; ++i) {
             const float x = 0.5f * (t.campione(i, 0) + t.campione(i, 1));
-            const float b = xb.bassi(x);
-            const float a = xa.alti(x);
-            const float m = x - b - a;
+            float b, m, a;
+            eq.separa(x, b, m, a);
             pb = std::max(pb, std::fabs(b));
             pm = std::max(pm, std::fabs(m));
             pa = std::max(pa, std::fabs(a));

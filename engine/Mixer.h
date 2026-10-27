@@ -53,7 +53,7 @@ public:
 
 private:
     struct Stato {
-        CrossoverLR4 xBassi[2], xAlti[2];
+        Isolatore3 eq[2];
         FiltroSVF filtro[2];
         float gain = 1.0f, alti = 1.0f, medi = 1.0f, bassi = 1.0f, volume = 0.64f, xf = 1.0f;
         float filtroMix = 0.0f;  // 0 = filtro escluso, 1 = attivo

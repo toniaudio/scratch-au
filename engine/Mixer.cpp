@@ -40,10 +40,8 @@ void Mixer::prepara(double sampleRate) {
     sr_ = static_cast<float>(sampleRate);
     for (auto& s : st_) {
         for (int c = 0; c < 2; ++c) {
-            s.xBassi[c].imposta(250.0f, sr_);
-            s.xAlti[c].imposta(2500.0f, sr_);
-            s.xBassi[c].azzera();
-            s.xAlti[c].azzera();
+            s.eq[c].imposta(250.0f, 2500.0f, sr_);
+            s.eq[c].azzera();
             s.filtro[c].azzera();
         }
     }
@@ -89,9 +87,8 @@ void Mixer::canaleRender(int n, float* l, float* r, int frame) {
         float* canali[2] = {l, r};
         for (int ch = 0; ch < 2; ++ch) {
             const float x = canali[ch][i] * g;
-            const float b = s.xBassi[ch].bassi(x);
-            const float a = s.xAlti[ch].alti(x);
-            const float m = x - b - a;
+            float b, m, a;
+            s.eq[ch].separa(x, b, m, a);
             const float eq = b * gb + m * gm + a * ga;
             float lp, hp;
             s.filtro[ch].processa(eq, lp, hp);
