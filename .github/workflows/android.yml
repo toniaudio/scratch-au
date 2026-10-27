@@ -80,6 +80,39 @@ jobs:
             DVS.apk
             firmato.txt
 
+  # Test della logica dell'app e "foto" della schermata vera (Robolectric), pubblicate nella Release "schermate"
+  schermate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: NDK e CMake del runner
+        run: |
+          echo "DVS_NDK=$(ls "$ANDROID_HOME/ndk" | sort -V | tail -1)" >> "$GITHUB_ENV"
+          echo "DVS_CMAKE=$(ls "$ANDROID_HOME/cmake" | sort -V | tail -1)" >> "$GITHUB_ENV"
+      - name: Test e schermate
+        run: ./gradlew --no-daemon testDebugUnitTest
+      - name: Rapporto dei test
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapporto-test
+          path: app/build/reports/tests/
+      - name: Pubblica le schermate
+        if: always() && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -la app/build/schermate || exit 0
+          gh release delete schermate -y --cleanup-tag || true
+          gh release create schermate app/build/schermate/*.png --prerelease --target "$GITHUB_SHA" \
+            --title "Schermate (solo per controllo)" --notes "Foto automatiche della schermata con brani finti: non da installare."
+
   pubblica:
     needs: apk
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'

@@ -21,6 +21,24 @@ object Motore {
     external fun impostaBuffer(multiplo: Int)
     external fun diagnostica(): String
 
+    // --- caricamento dei brani (vedi Decodificatore)
+    external fun nuovaTraccia(sampleRate: Int, frameAttesi: Long): Long
+    external fun aggiungiPcm(handle: Long, buffer: java.nio.ByteBuffer, offset: Int, byte: Int, canali: Int, formatoFloat: Boolean): Boolean
+    external fun frequenzaTraccia(handle: Long, sampleRate: Int)
+    /** [bpm, prima battuta in s, durata in s]; usa/crea il file di analisi `cache`. */
+    external fun analizza(handle: Long, cache: String?): DoubleArray
+    /** Per livello di zoom: [bassi…, medi…, alti…], colonne di 64·2^livello frame del brano. */
+    external fun waveform(handle: Long): Array<ByteArray>
+    external fun caricaNelDeck(handle: Long, deck: Int)
+    external fun scartaTraccia(handle: Long)
+
+    // --- comandi e stato (vedi Ponte)
+    external fun comando(deck: Int, tipo: Int, a: Double, b: Double)
+    external fun impostaDeck(deck: Int, parametro: Int, valore: Float)
+    external fun impostaMixer(parametro: Int, canale: Int, valore: Float)
+    /** Istantanea per l'interfaccia, 20 valori (vedi djaaay_jni.cpp). */
+    external fun stato(dest: DoubleArray)
+
     /** Il motore diventa proprietario del file descriptor e lo chiude sempre. */
     external fun avviaRegistrazione(fd: Int): Boolean
     external fun fermaRegistrazione()

@@ -15,6 +15,7 @@
 
 #include <unistd.h>
 
+#include "Analisi.h"
 #include "Motore.h"
 
 namespace {
@@ -189,6 +190,16 @@ Uscita* uscita() {
     return &u;
 }
 
+// Un brano in caricamento: si riempie a pezzi dal decodificatore Android, poi si analizza e si passa a un deck.
+struct Caricamento {
+    djaaay::Traccia* traccia = new djaaay::Traccia();
+    djaaay::Waveform waveform;
+    djaaay::Tempo tempo;
+    ~Caricamento() { delete traccia; }
+};
+
+Caricamento* caricamento(jlong h) { return reinterpret_cast<Caricamento*>(h); }
+
 }  // namespace
 
 extern "C" {
@@ -236,6 +247,169 @@ JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_fermaRegistrazione(JNIEn
 
 JNIEXPORT jboolean JNICALL Java_com_toniaudio_djaaay_Motore_registrazioneAttiva(JNIEnv*, jobject) {
     return uscita()->motore.registratore.attiva() ? JNI_TRUE : JNI_FALSE;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Caricamento dei brani
+
+JNIEXPORT jlong JNICALL Java_com_toniaudio_djaaay_Motore_nuovaTraccia(JNIEnv*, jobject, jint sampleRate, jlong frameAttesi) {
+    auto* c = new Caricamento();
+    c->traccia->sampleRate = sampleRate > 0 ? sampleRate : 44100;
+    c->traccia->riserva(frameAttesi);
+    return reinterpret_cast<jlong>(c);
+}
+
+// PCM dal decodificatore: 16 bit (formatoFloat = false) o float, `canali` canali interleaved, in un ByteBuffer diretto
+JNIEXPORT jboolean JNICALL Java_com_toniaudio_djaaay_Motore_aggiungiPcm(JNIEnv* env, jobject, jlong h, jobject buffer,
+                                                                        jint offset, jint byte, jint canali,
+                                                                        jboolean formatoFloat) {
+    auto* dati = static_cast<uint8_t*>(env->GetDirectBufferAddress(buffer));
+    if (h == 0 || dati == nullptr || canali <= 0 || byte <= 0) return JNI_FALSE;
+    dati += offset;
+    if (formatoFloat == JNI_TRUE) {
+        const int64_t frame = byte / (4 * canali);
+        const auto* f = reinterpret_cast<const float*>(dati);
+        std::vector<int16_t> pcm(static_cast<size_t>(frame * canali));
+        for (size_t i = 0; i < pcm.size(); ++i)
+            pcm[i] = static_cast<int16_t>(std::lround(std::clamp(f[i], -1.0f, 1.0f) * 32767.0f));
+        caricamento(h)->traccia->aggiungi(pcm.data(), frame, canali);
+    } else {
+        const int64_t frame = byte / (2 * canali);
+        caricamento(h)->traccia->aggiungi(reinterpret_cast<const int16_t*>(dati), frame, canali);
+    }
+    return JNI_TRUE;
+}
+
+// La frequenza vera si sa solo dal primo pezzo decodificato (es. AAC con SBR): si corregge qui
+JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_frequenzaTraccia(JNIEnv*, jobject, jlong h, jint sampleRate) {
+    if (h != 0 && sampleRate > 0) caricamento(h)->traccia->sampleRate = sampleRate;
+}
+
+// Waveform e tempo: dal file di analisi se c'è e vale, altrimenti calcolati e salvati. Restituisce [bpm, primo battito, secondi]
+JNIEXPORT jdoubleArray JNICALL Java_com_toniaudio_djaaay_Motore_analizza(JNIEnv* env, jobject, jlong h, jstring cache) {
+    if (h == 0) return nullptr;
+    Caricamento* c = caricamento(h);
+    const char* percorso = cache ? env->GetStringUTFChars(cache, nullptr) : nullptr;
+    if (percorso == nullptr || !djaaay::caricaWaveform(percorso, c->waveform, c->tempo)) {
+        c->waveform = djaaay::analizzaWaveform(*c->traccia);
+        c->tempo = djaaay::analizzaTempo(*c->traccia);
+        if (percorso != nullptr) djaaay::salvaWaveform(c->waveform, c->tempo, percorso);
+    }
+    if (percorso != nullptr) env->ReleaseStringUTFChars(cache, percorso);
+    const jdouble valori[3] = {c->tempo.bpm, c->tempo.primoBattito, c->traccia->secondi()};
+    jdoubleArray r = env->NewDoubleArray(3);
+    env->SetDoubleArrayRegion(r, 0, 3, valori);
+    return r;
+}
+
+// Livelli della waveform per l'interfaccia: per livello [bassi…, medi…, alti…] (colonne di 64·2^livello frame)
+JNIEXPORT jobjectArray JNICALL Java_com_toniaudio_djaaay_Motore_waveform(JNIEnv* env, jobject, jlong h) {
+    if (h == 0) return nullptr;
+    const auto& livelli = caricamento(h)->waveform.livelli;
+    jobjectArray r = env->NewObjectArray(static_cast<jsize>(livelli.size()), env->FindClass("[B"), nullptr);
+    for (size_t i = 0; i < livelli.size(); ++i) {
+        const auto& l = livelli[i];
+        const auto n = static_cast<jsize>(l.colonne());
+        jbyteArray a = env->NewByteArray(3 * n);
+        env->SetByteArrayRegion(a, 0, n, reinterpret_cast<const jbyte*>(l.bassi.data()));
+        env->SetByteArrayRegion(a, n, n, reinterpret_cast<const jbyte*>(l.medi.data()));
+        env->SetByteArrayRegion(a, 2 * n, n, reinterpret_cast<const jbyte*>(l.alti.data()));
+        env->SetObjectArrayElement(r, static_cast<jsize>(i), a);
+        env->DeleteLocalRef(a);
+    }
+    return r;
+}
+
+// Il brano passa al deck (che ne diventa proprietario); il caricamento sparisce
+JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_caricaNelDeck(JNIEnv*, jobject, jlong h, jint deck) {
+    if (h == 0) return;
+    Caricamento* c = caricamento(h);
+    if (deck >= 0 && deck < 2 && c->traccia->frame() > 0) {
+        uscita()->motore.deck[deck].carica(c->traccia);
+        c->traccia = nullptr;
+    }
+    delete c;
+}
+
+JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_scartaTraccia(JNIEnv*, jobject, jlong h) {
+    delete caricamento(h);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Comandi e stato
+
+JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_comando(JNIEnv*, jobject, jint deck, jint tipo, jdouble a, jdouble b) {
+    if (deck < 0 || deck > 1 || tipo < djaaay::ComandoDeck::Play || tipo > djaaay::ComandoDeck::Loop) return;  // Carica no
+    djaaay::ComandoDeck c;
+    c.tipo = static_cast<djaaay::ComandoDeck::Tipo>(tipo);
+    c.a = a;
+    c.b = b;
+    uscita()->motore.deck[deck].invia(c);
+}
+
+// Parametri del deck: 0 pitch, 1 frizione, 2 avvio (s), 3 frenata (s), 4 keylock (0/1)
+JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaDeck(JNIEnv*, jobject, jint deck, jint parametro, jfloat v) {
+    if (deck < 0 || deck > 1) return;
+    djaaay::Deck& d = uscita()->motore.deck[deck];
+    switch (parametro) {
+        case 0: d.pitch.store(std::clamp(v, -0.5f, 0.5f)); break;
+        case 1: d.frizione.store(std::clamp(v, 0.0f, 1.0f)); break;
+        case 2: d.avvioSecondi.store(std::clamp(v, 0.0f, 5.0f)); break;
+        case 3: d.frenataSecondi.store(std::clamp(v, 0.0f, 5.0f)); break;
+        case 4: d.keylock.store(v >= 0.5f); break;
+        default: break;
+    }
+}
+
+// Mixer: per canale 0 gain, 1 alti, 2 medi, 3 bassi, 4 filtro, 5 volume; generali 10 crossfader, 11 curva, 12 inverti, 13 master
+JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaMixer(JNIEnv*, jobject, jint parametro, jint canale, jfloat v) {
+    djaaay::Mixer& m = uscita()->motore.mixer;
+    if (parametro < 10) {
+        if (canale < 0 || canale > 1) return;
+        djaaay::Canale& c = m.canale[canale];
+        switch (parametro) {
+            case 0: c.gain.store(v); break;
+            case 1: c.alti.store(v); break;
+            case 2: c.medi.store(v); break;
+            case 3: c.bassi.store(v); break;
+            case 4: c.filtro.store(v); break;
+            case 5: c.volume.store(v); break;
+            default: break;
+        }
+        return;
+    }
+    switch (parametro) {
+        case 10: m.crossfader.store(v); break;
+        case 11: m.curva.store(static_cast<int>(v)); break;
+        case 12: m.inverti.store(v >= 0.5f); break;
+        case 13: m.master.store(v); break;
+        default: break;
+    }
+}
+
+// Istantanea per l'interfaccia (a ogni fotogramma), senza allocazioni:
+// per deck (×8, da 0 e da 8): posizione, durata, velocità, in play, cue, keylock in uso, livello canale, 0;
+// 16 livello master L, 17 livello master R, 18 REC attiva, 19 secondi registrati
+JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_stato(JNIEnv* env, jobject, jdoubleArray dest) {
+    if (env->GetArrayLength(dest) < 20) return;
+    djaaay::Motore& m = uscita()->motore;
+    for (auto& d : m.deck) d.raccogliTracceVecchie();  // libera i brani sostituiti (sempre dal thread dell'interfaccia)
+    jdouble v[20] = {};
+    for (int d = 0; d < 2; ++d) {
+        const djaaay::Deck& k = m.deck[d];
+        v[d * 8 + 0] = k.posizioneSecondi();
+        v[d * 8 + 1] = k.durataSecondi();
+        v[d * 8 + 2] = k.velocita();
+        v[d * 8 + 3] = k.inPlay() ? 1.0 : 0.0;
+        v[d * 8 + 4] = k.cueSecondi();
+        v[d * 8 + 5] = k.keylockInUso() ? 1.0 : 0.0;
+        v[d * 8 + 6] = m.mixer.canale[d].livello.load();
+    }
+    v[16] = m.mixer.livelloL.load();
+    v[17] = m.mixer.livelloR.load();
+    v[18] = m.registratore.attiva() ? 1.0 : 0.0;
+    v[19] = m.registratore.secondi();
+    env->SetDoubleArrayRegion(dest, 0, 20, v);
 }
 
 }  // extern "C"
