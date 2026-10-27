@@ -248,7 +248,7 @@ html,body{width:914px;height:411px;overflow:hidden;background:var(--bg);color:va
 .pad.la svg{width:12px;height:12px}
 .pad.la{color:var(--txt)}
 .pad.lon,.pad.loff{display:flex;align-items:baseline;justify-content:center;gap:5px}
-.lv{font-family:'JetBrains Mono';font-size:13px;font-weight:800}
+.lv{font-family:"JetBrains Mono";font-size:14px;font-weight:800}
 .lu{font-size:7.5px;letter-spacing:.6px}
 .pad.lon{color:var(--ok);border-color:#3ddc84;background:#3ddc8418;box-shadow:0 0 8px #3ddc8433 inset}
 .pad.loff{color:var(--txt)}
@@ -322,7 +322,7 @@ html,body{width:914px;height:411px;overflow:hidden;background:var(--bg);color:va
         <div class="platter"><div class="ring" style="border-color:#2d3448"></div><div class="mk" style="transform:rotate(-122deg)"></div><div class="lab" style="background:var(--db)">B</div></div>
         <div class="tr"><div class="btn">CUE</div><div class="btn play"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4l13 8-13 8z"/></svg></div><div class="btn on" style="background:var(--b)">SYNC</div></div>
         <div class="tabs"><div class="tab">HOT CUE</div><div class="tab on">LOOP</div><div class="tab">FX</div></div>
-        <div class="pads lsel"><div class="pad la"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 5l-8 7 8 7z"/></svg></div><div class="pad lon"><span class="lv">4</span><span class="lu">BATTUTE</span></div><div class="pad la"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 5l8 7-8 7z"/></svg></div></div>
+        <div class="pads lsel"><div class="pad la"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M15 5l-8 7 8 7z"/></svg></div><div class="pad lon"><span class="lv">4</span></div><div class="pad la"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 5l8 7-8 7z"/></svg></div></div>
       </div>
       <div class="pitch"><div class="lbl">PITCH</div><div class="vslider"><div class="mid"></div><div class="cap" style="top:calc(50% - 20px)"></div></div><div class="pv">+2.1%</div><div class="klock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5" fill="currentColor"/></svg>DVS</div></div>
     </div>
@@ -424,7 +424,7 @@ function wave(id,seed,accent,cues,lowc){
 }
 wave('wa',3,'#ff3b47',[[300,'#ffb020','1'],[612,'#3ddc84','2'],[790,'#b07cff','3']],'#5c1219');
 wave('wb',8,'#3d7bff',[[520,'#ffb020','1']],'#0f2766');
-(function(){const x=document.getElementById('wb').getContext('2d');const s=440,e=440+36*4;x.fillStyle='rgba(61,220,132,0.16)';x.fillRect(s,0,e-s,60);x.fillStyle='#3ddc84';x.fillRect(s,0,2,60);x.fillRect(e,0,2,60);x.font='bold 8px Inter';x.fillText('LOOP 4',s+5,9);})();
+(function(){const x=document.getElementById('wb').getContext('2d');const s=440,e=440+36*4;x.fillStyle='rgba(61,220,132,0.16)';x.fillRect(s,0,e-s,60);x.fillStyle='#3ddc84';x.fillRect(s,0,2,60);x.fillRect(e,0,2,60);x.font='bold 8px Inter';x.fillText('4',s+5,9);})();
 
 const tracks=[
  ['Funky Drummer Break','Classic Breaks','98.0','4:12','MP3','#25c4ff',1],
