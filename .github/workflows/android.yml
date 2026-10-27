@@ -38,15 +38,15 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Chiave di firma
         env:
-          CHIAVE: ${{ secrets.DJAAAY_KEYSTORE_B64 }}
+          CHIAVE: ${{ secrets.DVS_KEYSTORE_B64 }}
         run: |
           if [ -n "$CHIAVE" ]; then
-            echo "$CHIAVE" | base64 -d > "$RUNNER_TEMP/djaaay.p12"
-            echo "DJAAAY_KEYSTORE_FILE=$RUNNER_TEMP/djaaay.p12" >> "$GITHUB_ENV"
-            echo "DJAAAY_KEYSTORE_PASSWORD=djaaay-firma" >> "$GITHUB_ENV"
+            echo "$CHIAVE" | base64 -d > "$RUNNER_TEMP/dvs.p12"
+            echo "DVS_KEYSTORE_FILE=$RUNNER_TEMP/dvs.p12" >> "$GITHUB_ENV"
+            echo "DVS_KEYSTORE_PASSWORD=dvs-firma" >> "$GITHUB_ENV"
             echo "FIRMATO=si" >> "$GITHUB_ENV"
           else
-            echo "::warning::Manca il secret DJAAAY_KEYSTORE_B64: l'APK è firmato con una chiave di prova e non viene pubblicato."
+            echo "::warning::Manca il secret DVS_KEYSTORE_B64: l'APK è firmato con una chiave di prova e non viene pubblicato."
           fi
       - name: NDK e CMake del runner
         run: |
@@ -54,8 +54,8 @@ jobs:
           NDK=$(ls "$ANDROID_HOME/ndk" | sort -V | tail -1)
           CMAKE=$(ls "$ANDROID_HOME/cmake" | sort -V | tail -1)
           echo "NDK $NDK, CMake $CMAKE"
-          echo "DJAAAY_NDK=$NDK" >> "$GITHUB_ENV"
-          echo "DJAAAY_CMAKE=$CMAKE" >> "$GITHUB_ENV"
+          echo "DVS_NDK=$NDK" >> "$GITHUB_ENV"
+          echo "DVS_CMAKE=$CMAKE" >> "$GITHUB_ENV"
       - name: Compila
         run: ./gradlew --no-daemon assembleRelease
       - name: Controlla l'APK

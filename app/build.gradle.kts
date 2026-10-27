@@ -11,7 +11,7 @@ android {
     namespace = "com.toniaudio.djaaay"
     compileSdk = 35
     // Su GitHub Actions si usano NDK e CMake già installati nel runner (scelti dal workflow)
-    System.getenv("DJAAAY_NDK")?.let { ndkVersion = it }
+    System.getenv("DVS_NDK")?.let { ndkVersion = it }
 
     defaultConfig {
         applicationId = "com.toniaudio.dvs"
@@ -29,14 +29,14 @@ android {
     }
 
     // Chiave di firma fissa (secret GitHub), così ogni nuova versione si installa sopra la precedente
-    val chiave = System.getenv("DJAAAY_KEYSTORE_FILE")
+    val chiave = System.getenv("DVS_KEYSTORE_FILE")
     signingConfigs {
         if (chiave != null) {
-            create("djaaay") {
+            create("dvs") {
                 storeFile = file(chiave)
-                storePassword = System.getenv("DJAAAY_KEYSTORE_PASSWORD")
-                keyAlias = "djaaay"
-                keyPassword = System.getenv("DJAAAY_KEYSTORE_PASSWORD")
+                storePassword = System.getenv("DVS_KEYSTORE_PASSWORD")
+                keyAlias = "dvs"
+                keyPassword = System.getenv("DVS_KEYSTORE_PASSWORD")
             }
         }
     }
@@ -44,14 +44,14 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = if (chiave != null) signingConfigs.getByName("djaaay") else signingConfigs.getByName("debug")
+            signingConfig = if (chiave != null) signingConfigs.getByName("dvs") else signingConfigs.getByName("debug")
         }
     }
 
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
-            System.getenv("DJAAAY_CMAKE")?.let { version = it }
+            System.getenv("DVS_CMAKE")?.let { version = it }
         }
     }
 

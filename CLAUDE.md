@@ -58,11 +58,11 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
 - Decodifica (MediaExtractor/MediaCodec) fuori dal thread audio → PCM 16 bit in memoria nativa; il deck legge alla
   velocità `rate * fileRate / deviceRate` (niente ricampionamento al caricamento). Interpolazione Hermite.
 - Ogni deck ha una "sorgente di controllo" del movimento: motore, dito (touch), MIDI e in futuro **timecode (DVS)**.
-- Firma APK: chiave fissa nel secret GitHub `DJAAAY_KEYSTORE_B64` (così gli aggiornamenti si installano sopra).
+- Firma APK: chiave fissa nel secret GitHub `DVS_KEYSTORE_B64` (così gli aggiornamenti si installano sopra).
 
 ## Tappe
 
-1. Scheletro Android + CI che pubblica `Djaaay.apk` nella Release `ultima`. 
+1. Scheletro Android + CI che pubblica `DVS.apk` nella Release `ultima`. 
 2. Motore: 2 deck, scratch con frizione/motore, gain, EQ, filtro, volumi, crossfader, master. Test su Linux.
 3. Caricamento brani, waveform colorata con zoom, libreria, UI come da bozze, opzioni.
 4. BPM + beatgrid + SYNC, keylock. 5. Hot cue, loop. 6. FX (echo, dub delay, reverb, stretch).
