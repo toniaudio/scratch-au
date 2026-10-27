@@ -3,6 +3,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
+#include <string>
 #include <vector>
 
 #include "Analisi.h"
@@ -273,6 +275,75 @@ static void testRevisione() {
     }
 }
 
+static void testScratchRegolare() {
+    // Dito che si muove a velocità costante (aggiornamenti ogni 10 ms): il disco deve andare regolare, non a scatti
+    Motore m;
+    m.prepara(48000.0);
+    Deck& d = m.deck[0];
+    d.carica(sinusoide(440.0, 30.0));
+    gira(m, 0.01);
+    const double ancora = d.posizioneSecondi();  // punto in cui si appoggia il dito
+    d.invia(cmd(ComandoDeck::ToccoInizio));
+    float vmin = 1e9f, vmax = -1e9f;
+    for (int i = 1; i <= 100; ++i) {
+        d.invia(cmd(ComandoDeck::ToccoSposta, 2.0 * i / 100.0));  // 2 s di brano in 1 s
+        gira(m, 0.005, 240);
+        if (i > 20) {
+            vmin = std::min(vmin, d.velocita());
+            vmax = std::max(vmax, d.velocita());
+        }
+        gira(m, 0.005, 240);
+    }
+    char testo[96];
+    std::snprintf(testo, sizeof testo, "scratch a velocità costante: disco regolare (%.2f…%.2f, atteso 2)", vmin, vmax);
+    verifica(vmin > 1.9f && vmax < 2.1f, testo);
+
+    // Dito veloce che si ferma di colpo (a 2,6 s dal punto d'appoggio): il disco si ferma lì, senza andare oltre
+    const double inizio = ancora + 2.0;
+    for (int i = 1; i <= 20; ++i) {
+        d.invia(cmd(ComandoDeck::ToccoSposta, 2.0 + 0.6 * i / 20.0));  // 3 volte la velocità normale
+        gira(m, 0.008, 192);
+    }
+    double massimo = 0.0;
+    for (int i = 0; i < 40; ++i) {
+        gira(m, 0.002, 96);
+        massimo = std::max(massimo, d.posizioneSecondi() - inizio);
+    }
+    std::snprintf(testo, sizeof testo, "dito che si ferma: il disco non va oltre (massimo %.4f, fine %.4f s)", massimo,
+                  d.posizioneSecondi() - inizio);
+    verifica(massimo < 0.6 + 0.003 && vicino(d.posizioneSecondi() - inizio, 0.6, 0.002) && std::fabs(d.velocita()) < 0.01,
+             testo);
+    d.invia(cmd(ComandoDeck::ToccoFine));
+}
+
+static void testAntiAliasing() {
+    // Un 15 kHz scratchato a 3 volte la velocità finirebbe a 45 kHz e si ripiegherebbe a ~3 kHz (fruscio metallico):
+    // con l'anti-aliasing quasi non si sente.
+    Motore m;
+    m.prepara(48000.0);
+    Deck& d = m.deck[0];
+    d.carica(sinusoide(15000.0, 30.0, 44100.0, 0.5f));
+    m.mixer.crossfader = 0.0f;
+    m.mixer.canale[0].volume = 1.0f;
+    m.mixer.master = 1.0f;
+    gira(m, 0.01);
+    d.invia(cmd(ComandoDeck::ToccoInizio));
+    float picco = 0.0f;
+    std::vector<float> out(2 * 240);
+    for (int i = 1; i <= 100; ++i) {  // 3 secondi di brano in 1 secondo
+        d.invia(cmd(ComandoDeck::ToccoSposta, 3.0 * i / 100.0));
+        for (int b = 0; b < 2; ++b) {  // 2 × 240 frame = 10 ms per spostamento del dito
+            m.render(out.data(), 240);
+            if (i > 30)
+                for (float v : out) picco = std::max(picco, std::fabs(v));
+        }
+    }
+    char testo[96];
+    std::snprintf(testo, sizeof testo, "scratch veloce: acuti ripiegati quasi spariti (%.3f su 0,5)", picco);
+    verifica(picco < 0.08f, testo);
+    d.invia(cmd(ComandoDeck::ToccoFine));
+}
+
 static void testMixer() {
     verifica(vicino(guadagniCrossfader(0.5f, kCurvaTaglio, false).a, 1.0, 1e-6) &&
                  vicino(guadagniCrossfader(0.5f, kCurvaTaglio, false).b, 1.0, 1e-6),
@@ -403,12 +474,91 @@ static void testWaveform() {
     delete t;
 }
 
+static std::string fileTemporaneo(const char* nome) {
+    const char* dir = std::getenv("TMPDIR");
+    return std::string(dir ? dir : "/tmp") + "/" + nome;
+}
+
+static void testRegistrazione() {
+    Motore m;
+    m.prepara(48000.0);
+    m.deck[0].avvioSecondi = 0.0f;
+    m.deck[0].carica(sinusoide(440.0, 30.0));
+    m.mixer.crossfader = 0.0f;
+    m.deck[0].invia(cmd(ComandoDeck::Play, 1.0));
+    gira(m, 0.2);
+
+    const std::string percorso = fileTemporaneo("dvs_test_rec.wav");
+    verifica(m.registratore.avviaSuFile(percorso.c_str(), 48000), "REC: si avvia");
+    verifica(!m.registratore.avviaSuFile(percorso.c_str(), 48000), "REC: non si avvia due volte");
+    // 2 secondi di mix, tenendo una copia di quello che esce
+    std::vector<float> atteso;
+    std::vector<float> out(2 * 192);
+    for (int i = 0; i < 500; ++i) {
+        m.render(out.data(), 192);
+        atteso.insert(atteso.end(), out.begin(), out.end());
+    }
+    m.registratore.ferma();
+    verifica(!m.registratore.attiva() && m.registratore.framePersi() == 0, "REC: fermata, nessun frame perso");
+
+    FILE* f = std::fopen(percorso.c_str(), "rb");
+    std::vector<unsigned char> wav;
+    if (f) {
+        unsigned char buf[65536];
+        size_t n;
+        while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) wav.insert(wav.end(), buf, buf + n);
+        std::fclose(f);
+    }
+    auto u32 = [&](size_t o) { return wav[o] | (wav[o + 1] << 8) | (wav[o + 2] << 16) | (uint32_t(wav[o + 3]) << 24); };
+    const bool intestazioneOk = wav.size() > 44 && std::memcmp(wav.data(), "RIFF", 4) == 0 &&
+                                std::memcmp(wav.data() + 8, "WAVE", 4) == 0 && u32(24) == 48000 &&
+                                u32(40) == wav.size() - 44 && u32(4) == wav.size() - 8;
+    verifica(intestazioneOk, "REC: file WAV valido con le dimensioni giuste");
+    const size_t frame = (wav.size() - 44) / 4;
+    verifica(frame == atteso.size() / 2, "REC: durata giusta (2 secondi)");
+    float diff = 0.0f;
+    for (size_t i = 0; i < std::min(frame * 2, atteso.size()); ++i) {
+        const int16_t v = static_cast<int16_t>(wav[44 + 2 * i] | (wav[44 + 2 * i + 1] << 8));
+        diff = std::max(diff, std::fabs(v / 32767.0f - atteso[i]));
+    }
+    verifica(diff < 1e-3f, "REC: il file contiene esattamente il mix");
+    std::remove(percorso.c_str());
+}
+
+static void testCacheWaveform() {
+    Traccia* t = sinusoide(3000.0, 4.0);
+    const Waveform w = analizzaWaveform(*t);
+    const std::string percorso = fileTemporaneo("dvs_test.wavef");
+    Waveform letta;
+    const bool ok = salvaWaveform(w, percorso.c_str()) && caricaWaveform(percorso.c_str(), letta);
+    bool uguale = ok && letta.livelli.size() == w.livelli.size();
+    for (size_t i = 0; uguale && i < w.livelli.size(); ++i)
+        uguale = letta.livelli[i].bassi == w.livelli[i].bassi && letta.livelli[i].medi == w.livelli[i].medi &&
+                 letta.livelli[i].alti == w.livelli[i].alti && letta.livelli[i].framePerColonna == w.livelli[i].framePerColonna;
+    verifica(uguale, "waveform salvata e ricaricata identica (tutti i livelli)");
+    // file rovinato: rifiutato senza danni
+    if (FILE* f = std::fopen(percorso.c_str(), "r+b")) {
+        std::fseek(f, 0, SEEK_SET);
+        std::fputc('X', f);
+        std::fclose(f);
+    }
+    Waveform rovinata;
+    verifica(!caricaWaveform(percorso.c_str(), rovinata), "waveform: file rovinato rifiutato");
+    verifica(!caricaWaveform(fileTemporaneo("non_esiste.wavef").c_str(), rovinata), "waveform: file mancante rifiutato");
+    std::remove(percorso.c_str());
+    delete t;
+}
+
 int main() {
     testDeck();
     testCueLoop();
     testRevisione();
+    testScratchRegolare();
+    testAntiAliasing();
     testMixer();
     testWaveform();
+    testCacheWaveform();
+    testRegistrazione();
     std::printf(errori ? "\n%d ERRORI\n" : "\ntutto ok\n", errori);
     return errori ? EXIT_FAILURE : EXIT_SUCCESS;
 }

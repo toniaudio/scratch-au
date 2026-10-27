@@ -88,7 +88,8 @@ private:
     bool scivola_ = false;     // dito appena staccato: si torna al motore con la frizione
     bool tocco_ = false;
     double toccoAncora_ = 0.0;
-    double toccoBersaglio_ = 0.0;
+    double toccoBersaglio_ = 0.0;      // dove deve andare il disco (posizione del dito, prevista tra un tocco e l'altro)
+    double toccoUltimo_ = 0.0;         // ultima posizione del dito ricevuta davvero
     double toccoVelBersaglio_ = 0.0;
     double campioniDaUltimoTocco_ = 0.0;
     double intervalloTocco_ = 0.0;

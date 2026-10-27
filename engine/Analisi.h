@@ -23,4 +23,9 @@ struct Waveform {
 
 Waveform analizzaWaveform(const Traccia& t);
 
+// Salvataggio dell'analisi: la seconda volta che si carica un brano la waveform è pronta subito.
+// Si salva solo il livello di dettaglio massimo, gli altri si ricostruiscono al caricamento (è rapidissimo).
+bool salvaWaveform(const Waveform& w, const char* percorso);
+bool caricaWaveform(const char* percorso, Waveform& w);
+
 }  // namespace djaaay

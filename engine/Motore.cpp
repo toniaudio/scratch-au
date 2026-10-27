@@ -11,6 +11,8 @@ void Motore::prepara(double sampleRate) {
 }
 
 void Motore::render(float* uscita, int frame) {
+    float* const inizio = uscita;
+    const int totale = frame;
     while (frame > 0) {
         const int n = std::min(frame, kBlocco);
         deck[0].render(aL_, aR_, n);
@@ -19,6 +21,7 @@ void Motore::render(float* uscita, int frame) {
         uscita += 2 * n;
         frame -= n;
     }
+    registratore.scrivi(inizio, totale);
 }
 
 }  // namespace djaaay

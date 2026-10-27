@@ -5,6 +5,7 @@
 
 #include "Deck.h"
 #include "Mixer.h"
+#include "Registratore.h"
 
 namespace djaaay {
 
@@ -18,6 +19,7 @@ public:
 
     Deck deck[2];
     Mixer mixer;
+    Registratore registratore;  // REC: riceve l'uscita del master
 
     // Thread audio: `frame` campioni stereo interleaved.
     void render(float* uscita, int frame);

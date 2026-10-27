@@ -23,6 +23,28 @@ inline void leggi(const Traccia& t, double pos, float& l, float& r) {
     r = hermite(t.campione(k - 1, 1), t.campione(k, 1), t.campione(k + 1, 1), t.campione(k + 2, 1), fr);
 }
 
+// Lettura con anti-aliasing: oltre la velocità normale ogni campione di uscita "scavalca" più campioni del brano,
+// e gli acuti si ripiegherebbero in fruscii metallici. Si fa la media dei punti scavalcati (filtro a finestra
+// larga quanto il passo), fino a 8 punti. A velocità normale o più lenta è una lettura semplice.
+constexpr int kMaxPunti = 8;
+inline void leggiFiltrato(const Traccia& t, double pos, double passo, float& l, float& r) {
+    const double ampiezza = std::fabs(passo);
+    if (ampiezza <= 1.0) {
+        leggi(t, pos, l, r);
+        return;
+    }
+    const int n = std::min(kMaxPunti, static_cast<int>(std::ceil(ampiezza)));
+    float sl = 0.0f, sr = 0.0f;
+    for (int j = 0; j < n; ++j) {
+        float pl, pr;
+        leggi(t, pos + passo * ((j + 0.5) / n - 0.5), pl, pr);
+        sl += pl;
+        sr += pr;
+    }
+    l = sl / static_cast<float>(n);
+    r = sr / static_cast<float>(n);
+}
+
 }  // namespace
 
 Deck::Deck() = default;
@@ -62,6 +84,7 @@ void Deck::salta(double nuovaPos) {
     // se il dito è sul disco, il suo riferimento si sposta insieme alla puntina
     toccoAncora_ += delta;
     toccoBersaglio_ += delta;
+    toccoUltimo_ += delta;
 }
 
 void Deck::applica(const ComandoDeck& c) {
@@ -122,22 +145,21 @@ void Deck::applica(const ComandoDeck& c) {
         case ComandoDeck::ToccoInizio:
             tocco_ = true;
             scivola_ = false;
-            toccoAncora_ = toccoBersaglio_ = pos_;
+            toccoAncora_ = toccoBersaglio_ = toccoUltimo_ = pos_;
             toccoVelBersaglio_ = 0.0;
             campioniDaUltimoTocco_ = 0.0;
             intervalloTocco_ = 0.0;
             break;
         case ComandoDeck::ToccoSposta:
             if (tocco_) {
+                // Il bersaglio va dall'ultima posizione raggiunta a quella nuova del dito nel tempo tipico tra due
+                // tocchi: movimento fluido, e quando il dito si ferma il disco si ferma lì (niente "sbandate").
                 const double nuovo = toccoAncora_ + c.a * sr;
-                if (campioniDaUltimoTocco_ > 0.0) {
-                    const double v = (nuovo - toccoBersaglio_) / campioniDaUltimoTocco_;
-                    toccoVelBersaglio_ = std::clamp(v, -40.0 * base_, 40.0 * base_);
-                    intervalloTocco_ = intervalloTocco_ > 0.0
-                                           ? 0.7 * intervalloTocco_ + 0.3 * campioniDaUltimoTocco_
-                                           : campioniDaUltimoTocco_;
-                }
-                toccoBersaglio_ = nuovo;
+                const double tra = std::min(campioniDaUltimoTocco_, 0.03 * srUscita_);  // pause lunghe non contano
+                if (tra > 0.0) intervalloTocco_ = intervalloTocco_ > 0.0 ? 0.7 * intervalloTocco_ + 0.3 * tra : tra;
+                const double durata = intervalloTocco_ > 0.0 ? intervalloTocco_ : 0.008 * srUscita_;
+                toccoUltimo_ = nuovo;
+                toccoVelBersaglio_ = std::clamp((nuovo - toccoBersaglio_) / durata, -40.0 * base_, 40.0 * base_);
                 campioniDaUltimoTocco_ = 0.0;
             }
             break;
@@ -194,8 +216,14 @@ void Deck::render(float* l, float* r, int frame) {
         const double velMotore = motore_ ? velNormale : 0.0;
         if (tocco_) {
             campioniDaUltimoTocco_ += 1.0;
-            if (intervalloTocco_ > 0.0 && campioniDaUltimoTocco_ > 2.0 * intervalloTocco_) toccoVelBersaglio_ = 0.0;
-            toccoBersaglio_ += toccoVelBersaglio_;
+            if (toccoVelBersaglio_ != 0.0) {
+                toccoBersaglio_ += toccoVelBersaglio_;
+                // arrivato alla posizione del dito: si ferma lì
+                if ((toccoVelBersaglio_ > 0.0) == (toccoBersaglio_ >= toccoUltimo_)) {
+                    toccoBersaglio_ = toccoUltimo_;
+                    toccoVelBersaglio_ = 0.0;
+                }
+            }
             const double desiderata =
                 std::clamp((toccoBersaglio_ - pos_) / ritardoTocco_, -40.0 * base_, 40.0 * base_);
             vel_ = desiderata + (vel_ - desiderata) * segui_;
@@ -217,11 +245,13 @@ void Deck::render(float* l, float* r, int frame) {
         }
 
         // --- lettura con interpolazione (e dissolvenza se la puntina è appena saltata)
+        // vel_ = frame del brano per frame di uscita: oltre 1 gli acuti del brano superano la metà della frequenza di uscita
+        const double passo = vel_;
         float sl, sr;
-        leggi(t, pos_, sl, sr);
+        leggiFiltrato(t, pos_, passo, sl, sr);
         if (sfumaRestanti_ > 0) {
             float vl, vr;
-            leggi(t, posVecchia_, vl, vr);
+            leggiFiltrato(t, posVecchia_, passo, vl, vr);
             const float w = static_cast<float>(sfumaRestanti_) / kSfuma;
             sl += (vl - sl) * w;
             sr += (vr - sr) * w;
