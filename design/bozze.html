@@ -219,6 +219,30 @@ html,body{width:914px;height:411px;overflow:hidden;background:var(--bg);color:va
 .dlf{margin-top:auto;padding:5px 8px;font-size:8.5px;color:var(--dim);border-top:1px solid var(--line);display:flex;justify-content:space-between}
 .dlrow-f{display:flex;align-items:center;gap:8px;padding:0 9px;height:27px;border-top:1px solid #1a1f2c;font-size:10px;font-weight:600}
 .dlrow-f em{font-style:normal;color:var(--dim);font-weight:500;margin-left:auto;font-size:9px}
+
+.sheet h2{gap:10px}
+.otabs{display:flex;gap:2px;background:#0f1219;border-radius:8px;padding:2px;margin-right:auto;margin-left:14px}
+.otabs span{font-size:10px;font-weight:700;padding:4px 12px;border-radius:6px;color:var(--dim)}
+.otabs span.on{background:var(--panel2);color:var(--txt)}
+.scope{width:150px;height:150px;border-radius:50%;background:#070a0f;border:1px solid var(--line);display:block;margin:4px auto 6px}
+.dvsl{display:grid;grid-template-columns:170px 1fr;gap:0 20px}
+.stat{display:flex;justify-content:space-between;font-size:10px;padding:3px 0;border-bottom:1px solid #1d2232}
+.stat b{font-family:'JetBrains Mono';font-weight:600}
+.btn2{display:inline-block;font-size:10px;font-weight:700;padding:5px 10px;border-radius:7px;background:var(--panel2);border:1px solid var(--line);color:var(--txt)}
+.btn2.pri{background:#c9cfdb;color:#0b0d12;border-color:#c9cfdb}
+.vu{flex:1;height:6px;border-radius:3px;background:linear-gradient(90deg,var(--ok) 0 70%,var(--warn) 70% 88%,#ff4040 88%);position:relative;overflow:hidden}
+.vu i{position:absolute;top:0;bottom:0;right:0;background:#0b0d12;display:block}
+.mt{width:100%;border-collapse:collapse;font-size:10px}
+.mt th{text-align:left;font-size:8.5px;color:var(--dim);letter-spacing:.5px;padding:3px 6px;font-weight:700}
+.mt td{padding:4px 6px;border-top:1px solid #1d2232}
+.mt td.mono{font-family:'JetBrains Mono';font-size:9.5px;color:var(--dim)}
+.mt td.x{color:#5a6378;text-align:right}
+.mtwrap{height:180px;overflow:hidden;border:1px solid var(--line);border-radius:8px;margin-top:4px}
+.learnbar{position:absolute;left:300px;right:300px;top:38px;z-index:20;background:#3ddc84;color:#0b0d12;font-weight:700;font-size:10.5px;border-radius:8px;padding:6px 10px;display:flex;justify-content:space-between;align-items:center;box-shadow:0 6px 18px #0009}
+.learnbar b{background:#0b0d12;color:#3ddc84;padding:2px 8px;border-radius:5px;font-size:9.5px}
+.lrn{outline:1.5px dashed #3ddc84aa;outline-offset:2px;border-radius:6px}
+.lrnsel{outline:2px solid #3ddc84;outline-offset:3px;border-radius:6px;box-shadow:0 0 12px #3ddc8466}
+.lrntag{position:absolute;font-size:8px;font-weight:800;background:#3ddc84;color:#0b0d12;padding:1px 4px;border-radius:4px;z-index:21}
 </style>
 </head>
 <body>
@@ -331,7 +355,7 @@ html,body{width:914px;height:411px;overflow:hidden;background:var(--bg);color:va
   <div id="s3bg"></div>
   <div class="dim"></div>
   <div class="sheet">
-    <h2>Opzioni · DVS <span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg></span></h2>
+    <h2><span>Opzioni</span><span class="otabs"><span class="on">Generale</span><span>MIDI</span><span>DVS</span></span><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg></span></h2>
     <div class="cols">
       <div>
         <h3>PIATTO E SCRATCH</h3>
@@ -347,12 +371,9 @@ html,body{width:914px;height:411px;overflow:hidden;background:var(--bg);color:va
         <h3>CROSSFADER</h3>
         <div class="opt"><div class="n">Curva</div><div class="seg"><span class="on">Taglio</span><span>Lineare</span><span>Morbida</span></div></div>
         <div class="opt"><div class="n">Inverti (hamster)</div><div style="flex:1"></div><div class="sw"></div></div>
-        <h3>CONTROLLER MIDI</h3>
-        <div class="opt"><div class="n">M-Audio X-Session Pro<small>collegato via USB</small></div><div style="flex:1"></div><span class="pill" style="background:#3ddc8422;color:var(--ok)">● collegato</span></div>
-        <div class="opt"><div class="n">Assegna comandi<small>tocca un comando, muovi la manopola</small></div><div style="flex:1"></div><span class="chip" style="color:var(--txt);border-color:var(--a)">LEARN</span></div>
         <h3>AUDIO</h3>
         <div class="opt"><div class="n">Uscita</div><div style="flex:1"></div><span class="m" style="color:var(--dim)">Altoparlante / cuffie</span></div>
-        <div class="opt"><div class="n">Timecode (DVS)<small>vinile Serato · ingresso della scheda USB</small></div><div style="flex:1"></div><span style="color:var(--dim);font-size:10px">non rilevata</span></div>
+        <div class="opt"><div class="n">Pre-ascolto in cuffia<small>con scheda audio USB a 4 uscite</small></div><div style="flex:1"></div><span style="color:var(--dim);font-size:10px">non rilevata</span></div>
       </div>
     </div>
   </div>
@@ -469,6 +490,76 @@ libScreen('s7',1,libPanel('B','Cartelle',
   brano('Battle Weapon Vol.2','Skratch Sounds','98.0','6:12')+
   brano('Baby Scratch Loops','Q-Bert','88.0','3:02'),
   '<span>tocca un brano: si carica nel deck B</span><span>Scratch tools</span>'));
+
+
+function optScreen(id,tab,html){
+  const sc=document.getElementById('s3').cloneNode(true);sc.id=id;
+  sc.querySelector('#s3bg')?.remove();
+  const bg=document.getElementById('s1').cloneNode(true);bg.id='';bg.classList.add('on');
+  bg.querySelectorAll('canvas').forEach((c,i)=>{c.getContext('2d').drawImage(document.getElementById(i?'wb':'wa'),0,0)});
+  sc.insertBefore(bg,sc.firstChild);
+  sc.querySelectorAll('.otabs span').forEach(s=>s.classList.toggle('on',s.textContent===tab));
+  sc.querySelector('.cols').outerHTML=html;
+  document.body.appendChild(sc);return sc;
+}
+const opt=(n,sub,ctrl)=>`<div class="opt"><div class="n">${n}${sub?`<small>${sub}</small>`:''}</div><div style="flex:1"></div>${ctrl}</div>`;
+const seg=(arr,on)=>`<div class="seg">${arr.map(a=>`<span class="${a===on?'on':''}">${a}</span>`).join('')}</div>`;
+const sl=(p,v)=>`<div class="hs" style="max-width:150px"><i style="width:${p}%"></i><b style="left:${p}%"></b></div><div class="v">${v}</div>`;
+// --- DVS
+const sDvs=optScreen('s8','DVS',`<div class="dvsl">
+  <div>
+    <canvas class="scope" id="scope" width="300" height="300"></canvas>
+    <div class="stat"><span>Segnale</span><b style="color:var(--ok)">96% · buono</b></div>
+    <div class="stat"><span>Velocità</span><b>+0,3%  ▶</b></div>
+    <div class="stat"><span>Posizione</span><b>01:42.6</b></div>
+    <div style="display:flex;gap:6px;margin-top:6px"><span class="btn2 pri">Calibra</span><span class="btn2">Azzera</span></div>
+  </div>
+  <div>
+    <h3>SEGNALE TIMECODE</h3>
+    ${opt('Scheda audio','Behringer UMC404HD · USB','<span class="pill" style="background:#3ddc8422;color:var(--ok)">● collegata</span>')}
+    ${opt('Ingresso','dove arriva il giradischi',seg(['1–2','3–4'],'1–2'))}
+    ${opt('Livello ingresso','porta il segnale nel verde','<div class="vu" style="max-width:90px"><i style="width:35%"></i></div>'+sl(60,'+6 dB'))}
+    ${opt('Tipo di timecode','',seg(['Serato CV02','Traktor','MixVibes'],'Serato CV02'))}
+    ${opt('Giri','',seg(['33⅓','45'],'33⅓'))}
+    <h3>COME SEGUE IL VINILE</h3>
+    ${opt('Modalità','assoluta = posizione del vinile',seg(['Assoluta','Relativa'],'Relativa'))}
+    ${opt('Sensibilità a disco fermo','più alta = si ferma prima',sl(45,'45%'))}
+    ${opt('Protezione salto puntina','ignora i salti in relativa','<div class="sw on"></div>')}
+  </div></div>`);
+// --- MIDI
+const righe=[['Crossfader','CC 8 · can 1'],['Volume A','CC 1 · can 1'],['Volume B','CC 2 · can 1'],['Gain A','CC 10 · can 1'],
+ ['Hi / Mid / Low A','CC 11–13 · can 1'],['Filtro A','CC 14 · can 1'],['Play A','Nota 46 · can 1'],['Cue A','Nota 44 · can 1'],
+ ['Sync A','Nota 45 · can 1'],['Hot cue 1–4 A','Note 48–51 · can 1'],['FX A on','Nota 52 · can 1'],['FX A dry/wet','CC 15 · can 1']];
+optScreen('s9','MIDI',`<div class="cols"><div>
+    <h3>CONTROLLER</h3>
+    ${opt('M-Audio X-Session Pro','collegato via USB','<span class="pill" style="background:#3ddc8422;color:var(--ok)">● collegato</span>')}
+    ${opt('Mappatura','preset salvato per questo controller',seg(['X-Session Pro','Personale 1'],'X-Session Pro'))}
+    ${opt('Assegna comandi','LEARN: tocchi un comando dell’app e muovi quello del controller','<span class="btn2 pri">LEARN</span>')}
+    ${opt('Togli tutte le assegnazioni','','<span class="btn2">Azzera</span>')}
+    <h3>COMANDI ASSEGNABILI</h3>
+    <div style="font-size:9.5px;color:var(--dim);line-height:1.5">Crossfader e curva · volumi · gain · EQ · filtri · master · Play · Cue · Sync · KEY · DVS ·
+    pitch · hot cue 1–4 · loop · FX on/off, scelta, dry/wet e parametri · libreria (scorri e carica) · scratch col jog (in futuro)</div>
+  </div><div>
+    <h3>ASSEGNAZIONI</h3>
+    <div class="mtwrap"><table class="mt"><tr><th>FUNZIONE</th><th>CONTROLLER</th><th></th></tr>
+    ${righe.map(r=>`<tr><td>${r[0]}</td><td class="mono">${r[1]}</td><td class="x">✕</td></tr>`).join('')}</table></div>
+  </div></div>`);
+// --- schermata principale in LEARN
+(function(){
+  const sc=document.getElementById('s1').cloneNode(true);sc.id='s10';
+  sc.querySelectorAll('canvas').forEach((c,i)=>{c.getContext('2d').drawImage(document.getElementById(i?'wb':'wa'),0,0)});
+  sc.insertAdjacentHTML('beforeend','<div class="learnbar"><span>LEARN · tocca un comando, poi muovi quello dell’X-Session</span><b>FINE</b></div>');
+  sc.querySelectorAll('.knob,.kslim,.kfilt,.vfader,.vslider,.btn,.pad,.klock').forEach(el=>el.classList.add('lrn'));
+  const xt=sc.querySelector('.xtrack');xt.classList.add('lrnsel');
+  document.body.appendChild(sc);
+  sc.querySelector('.xf3').insertAdjacentHTML('afterbegin','<span class="lrntag" style="margin-top:-30px">in attesa… muovi il crossfader</span>');
+})();
+
+
+(function(){const c=document.getElementById('scope');if(!c)return;const x=c.getContext('2d'),r=rng(11);x.fillStyle='#070a0f';x.fillRect(0,0,300,300);
+ x.strokeStyle='#1d2232';x.lineWidth=1;x.beginPath();x.moveTo(150,10);x.lineTo(150,290);x.moveTo(10,150);x.lineTo(290,150);x.stroke();
+ for(let i=0;i<2600;i++){const a=r()*Math.PI*2,rad=95+ (r()-0.5)*9 + (Math.sin(a*3)*2);x.fillStyle='rgba(61,220,132,'+(0.25+0.5*r())+')';x.fillRect(150+Math.cos(a)*rad,150+Math.sin(a)*rad,2,2)}
+ x.fillStyle='#3ddc84';x.font='bold 14px Inter';x.textAlign='center';x.fillText('TIMECODE',150,152);})();
 
 const s=new URLSearchParams(location.search).get('s')||'1';
 document.getElementById('s'+s).classList.add('on');

@@ -50,8 +50,18 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
 - **Libreria per deck**: il pulsante libreria di un deck apre la libreria DENTRO lo spazio di quel deck (sotto le waveform,
   senza coprire il mixer). Ricerca, tab Tutti / Cartelle / Playlist / Recenti, BPM e durata; tocco su un brano = caricato
   in quel deck. Il brano già caricato è in grigio.
-- Opzioni: frizione slipmat, avvio, frenata, sensibilità piatto, scratch su waveform, escursione pitch, curva e inverti
-  crossfader, MIDI (X-Session, LEARN), audio (uscita, pre-ascolto con scheda USB).
+- **Opzioni** (si aprono toccando DVS) a schede:
+  - *Generale*: frizione slipmat, avvio, frenata, sensibilità piatto, scratch su waveform, escursione pitch ±8/16/50,
+    curva e inverti crossfader, uscita audio, pre-ascolto (scheda USB).
+  - *MIDI*: controller collegato, preset di mappatura per controller (X-Session Pro predefinito + personali), LEARN,
+    elenco assegnazioni con ✕, azzera. **Tutti i comandi principali sono assegnabili**: crossfader e curva, volumi, gain,
+    EQ, filtri, master, Play, Cue, Sync, KEY, DVS, pitch, hot cue 1–4, loop, FX (on/off, scelta, dry/wet, parametri),
+    libreria (scorri e carica), in futuro scratch col jog.
+  - *Modalità LEARN* sulla schermata principale: barra verde in alto con FINE, comandi assegnabili bordati in verde
+    tratteggiato, quello scelto bordato pieno con "in attesa… muovi …".
+  - *DVS* (taratura): scope circolare del segnale (anello verde = buono), qualità %, velocità, posizione, Calibra/Azzera;
+    scheda audio, ingresso 1–2 / 3–4, livello ingresso con meter, tipo timecode (Serato CV02, Traktor, MixVibes),
+    giri 33⅓/45, modalità assoluta/relativa, sensibilità a disco fermo, protezione salto puntina.
 
 ## Architettura
 
