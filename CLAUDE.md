@@ -29,7 +29,7 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
 
 - Tema scuro **neutro** (grigi/bianco). Colore SOLO nelle **waveform** e nel **centro dei dischi**: deck A **rosso**
   (#FF3B47, bassi #5C1219), deck B **blu** (#3D7BFF, bassi #0F2766); nelle waveform bassi = tono scuro del deck,
-  medi = colore del deck, alti = bianco. Hot cue: 1 giallo #FFB020, 2 verde #3DDC84, 3 viola #B07CFF, 4 bianco.
+  medi = colore del deck, alti = bianco. Hot cue: 1 giallo #FFB020, 2 verde #3DDC84, 3 viola #B07CFF, 4 fucsia #FF4FD8 (non bianco: si confonderebbe con la puntina).
   Niente bottoni/scritte colorati per deck (eccezione: KEY acceso in verde).
 - In alto: per deck pulsante **libreria** all'estremità (A a sinistra, B a destra), titolo, artista, BPM, tempo mancante.
   Al centro il nome **DVS**: toccandolo si aprono le **Opzioni** (nessun pulsante ingranaggio).
