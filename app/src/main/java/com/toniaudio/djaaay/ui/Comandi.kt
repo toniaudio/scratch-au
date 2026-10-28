@@ -142,7 +142,8 @@ fun Manopola(
 /**
  * Fader verticale (volumi, pitch) disegnato come quelli dei mixer: fessura sottile, tacche della scala ai lati,
  * cappuccio scuro zigrinato con la linea bianca. `larghezza` è la zona da toccare (più larga del disegno).
- * `centrale` segna lo zero al centro (pitch). `valore` 0…1 (1 in alto).
+ * `centrale` segna lo zero al centro (pitch). `valore` 0…1 (1 in alto). Doppio tocco = `predefinito`
+ * (pitch: centro; volumi: 0 dB, in alto).
  */
 @Composable
 fun FaderVerticale(
@@ -152,6 +153,7 @@ fun FaderVerticale(
     centrale: Boolean = false,
     larghezza: Dp = 26.dp,
     cappuccio: Dp = 20.dp,
+    predefinito: Float = if (centrale) 0.5f else 1f,
 ) {
     val attuale by rememberUpdatedState(valore)
     val cambia by rememberUpdatedState(onCambia)
@@ -177,7 +179,7 @@ fun FaderVerticale(
                     } while (c.pressed)
                 }
             }
-            .pointerInput(centrale) { detectTapGestures(onDoubleTap = { if (centrale) cambia(0.5f) }) },
+            .pointerInput(predefinito) { detectTapGestures(onDoubleTap = { cambia(predefinito) }) },
     ) {
         val hCap = kAltezzaCapV.toPx()
         val cx = size.width / 2
@@ -200,23 +202,41 @@ fun FaderVerticale(
     }
 }
 
-/** Crossfader: segue il dito in posizione assoluta (per i tagli veloci da scratch). `valore` 0 = A … 1 = B. */
+/**
+ * Crossfader: segue il dito in posizione assoluta (per i tagli veloci da scratch). `valore` 0 = A … 1 = B.
+ * Doppio tocco (due tocchi brevi, fermi, nello stesso punto) = al centro; i tagli trascinando non contano.
+ */
 @Composable
 fun Crossfader(valore: Float, onCambia: (Float) -> Unit, modifier: Modifier = Modifier) {
     val cambia by rememberUpdatedState(onCambia)
     Canvas(
         modifier.pointerInput(Unit) {
+            var ultimoTocco = 0L        // quando è finito l'ultimo tocco breve e fermo
+            var dovePrima = Offset.Zero
+            val fermo = 8.dp.toPx()
             awaitEachGesture {
                 val giu = awaitFirstDown()
                 val margine = kLarghezzaCapX.toPx() / 2
                 fun daX(x: Float) = ((x - margine) / (size.width - 2 * margine)).coerceIn(0f, 1f)
                 cambia(daX(giu.position.x))
+                var mosso = false
+                var fine = giu.uptimeMillis
                 do {
                     val e = awaitPointerEvent()
                     val c = e.changes.firstOrNull { it.id == giu.id } ?: break
-                    cambia(daX(c.position.x))
+                    if ((c.position - giu.position).getDistance() > fermo) mosso = true
+                    fine = c.uptimeMillis
+                    if (c.pressed) cambia(daX(c.position.x))
                     c.consume()
                 } while (c.pressed)
+                val tocco = !mosso && fine - giu.uptimeMillis < 250
+                if (tocco && giu.uptimeMillis - ultimoTocco < 350 && (giu.position - dovePrima).getDistance() < 3 * fermo) {
+                    cambia(0.5f)
+                    ultimoTocco = 0L
+                } else {
+                    ultimoTocco = if (tocco) fine else 0L
+                    dovePrima = giu.position
+                }
             }
         },
     ) {

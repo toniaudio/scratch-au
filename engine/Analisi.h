@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "Filtri.h"
 #include "Traccia.h"
 
 namespace djaaay {
@@ -31,6 +32,39 @@ struct Tempo {
 };
 
 Tempo analizzaTempo(const Traccia& t);
+
+// Analisi a pezzi, mentre il brano si decodifica: aggiorna() dopo ogni pezzo aggiunto alla traccia (dallo stesso
+// thread che la riempie), finisci() alla fine. Il risultato è identico a quello calcolato in un colpo solo.
+class AnalisiProgressiva {
+public:
+    explicit AnalisiProgressiva(double sampleRate);
+    void aggiorna(const Traccia& t);
+    void finisci(const Traccia& t);
+    Waveform waveform() const;  // fin dove è arrivata la decodifica
+    Tempo tempo() const;        // dopo finisci()
+
+private:
+    void chiudiColonna();
+    void chiudiFinestra();
+
+    double sr_;
+    int64_t fatti_ = 0;  // frame già analizzati
+    // si analizza a metà frequenza (media di due frame): basta per waveform e attacchi, e costa la metà
+    float meta_ = 0.0f;
+    bool dispari_ = false;  // c'è un frame in attesa del suo compagno
+    // waveform: colonna in corso
+    Isolatore3 eqOnda_;
+    Waveform::Livello base_;
+    float picco_[3] = {0.0f, 0.0f, 0.0f};
+    int inColonna_ = 0;
+    // attacchi: finestra in corso
+    Isolatore3 eqTempo_;
+    int passo_;
+    std::vector<float> attacchi_;  // curva grezza (una finestra ogni passo_ frame)
+    double energia_[3] = {0.0, 0.0, 0.0};
+    float prima_[3] = {0.0f, 0.0f, 0.0f};
+    int inFinestra_ = 0;
+};
 
 // Salvataggio dell'analisi: la seconda volta che si carica un brano la waveform è pronta subito.
 // Si salva solo il livello di dettaglio massimo, gli altri si ricostruiscono al caricamento (è rapidissimo).

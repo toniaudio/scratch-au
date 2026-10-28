@@ -1,4 +1,4 @@
-// Effetti per deck (uno per deck, prima del mixer): ECHO, DUB DELAY, REVERB, STRETCH.
+// Effetti per deck (uno per deck, prima del mixer): ECHO, DUB DELAY, REVERB, ROLL.
 // I tempi di eco seguono il BPM del brano (secondiBattito). Le code di eco e riverbero continuano anche dopo aver
 // spento l'effetto o cambiato tipo, come sugli effetti dei mixer veri. Ogni tipo ricorda le sue regolazioni.
 // Le regolazioni sono atomiche; render() gira nel thread audio e non alloca.
@@ -12,31 +12,32 @@
 
 namespace djaaay {
 
-enum TipoEffetto : int { kEcho = 0, kDub = 1, kReverb = 2, kStretch = 3 };
+enum TipoEffetto : int { kEcho = 0, kDub = 1, kReverb = 2, kRoll = 3 };
 
 // Riga in basso di ECHO e DUB DELAY: tempo in battiti
 constexpr int kNumBattute = 7;
 constexpr float kBattute[kNumBattute] = {0.125f, 0.25f, 0.5f, 0.75f, 1.0f, 2.0f, 4.0f};
 // Riga in basso del REVERB: coda corta, media, lunga
 constexpr int kNumCode = 3;
-// Riga in basso dello STRETCH: ½× ¼× ⅛× e FREEZE (fermo)
-constexpr int kNumRapporti = 4;
-constexpr float kRapporti[kNumRapporti] = {0.5f, 0.25f, 0.125f, 0.0f};
+// ROLL: lunghezze in battiti (asse Y del trackpad); riga in basso: avanti / indietro
+constexpr int kNumRoll = 5;
+constexpr float kBattitiRoll[kNumRoll] = {0.0625f, 0.125f, 0.25f, 0.5f, 1.0f};
+int indiceRoll(float param1);  // 0…1 → indice in kBattitiRoll
 
 class Effetto {
 public:
     Effetto();
 
-    // Fuori dal thread audio: alloca linee di ritardo e memoria dello stretch.
+    // Fuori dal thread audio: alloca linee di ritardo e memoria del roll.
     void prepara(double sampleRate);
 
     std::atomic<bool> acceso{false};
     std::atomic<int> tipo{kEcho};
     // Per tipo (indice TipoEffetto):
     std::atomic<float> dryWet[4];
-    std::atomic<float> param1[4];  // ECHO, DUB: feedback · REVERB: stanza · STRETCH: grana (10…120 ms)
-    std::atomic<float> param2[4];  // DUB: tono · REVERB: damp · STRETCH: tono (centro = fisso, ±12 semitoni)
-    std::atomic<int> scelta[4];    // riga in basso: ECHO/DUB indice in kBattute, REVERB coda, STRETCH rapporto
+    std::atomic<float> param1[4];  // ECHO, DUB: feedback · REVERB: stanza · ROLL: lunghezza (kBattitiRoll)
+    std::atomic<float> param2[4];  // DUB: tono · REVERB: damp
+    std::atomic<int> scelta[4];    // riga in basso: ECHO/DUB indice in kBattute, REVERB coda, ROLL 0 avanti 1 indietro
     std::atomic<float> secondiBattito{0.5f};  // durata di un battito (dal BPM e dal pitch del deck)
 
     // Thread audio: elabora sul posto un blocco stereo non interleaved.
@@ -95,18 +96,10 @@ private:
         }
     };
 
-    // Un grano dello STRETCH: legge un pezzetto del deck a velocità `passo` con una finestra a campana
-    struct Grano {
-        double pos = 0.0;
-        double passo = 1.0;
-        int eta = 0;
-        int durata = 0;  // 0 = spento
-    };
-
     double sr_ = 48000.0;
     float kRampa_ = 0.0f;   // smoothing per campione (~15 ms) di mandate e livelli
     float kTempo_ = 0.0f;   // smoothing del tempo di ritardo (~80 ms: cambiando tempo l'eco "scivola")
-    float kCodaStretch_ = 0.0f;  // spegnendo lo STRETCH il suono torna quello del deck in dissolvenza (~0,5 s)
+    int incrocio_ = 0;      // campioni di dissolvenza al giro del roll (~4 ms): niente click
 
     // Mandate (quanto segnale entra nell'effetto), livelli e "vita" delle code
     float mandata_[3] = {0.0f, 0.0f, 0.0f};  // echo, dub, reverb
@@ -126,15 +119,14 @@ private:
     Pettine pettini_[2][8];
     PassaTutto passaTutto_[2][4];
     float stanza_ = 1.0f;
-    // STRETCH
+    // ROLL: ripete l'ultimo pezzo del deck (registrato di continuo)
     std::vector<float> catturaL_, catturaR_;  // ultimi secondi del deck
     int64_t catturati_ = 0;
-    double lettura_ = 0.0;      // da dove partono i grani (avanza al rapporto scelto)
-    Grano grani_[2];
-    int prossimoGrano_ = 0;     // campioni al prossimo grano
-    uint32_t caso_ = 12345;     // generatore pseudo-casuale per il FREEZE
-    bool stretchVivo_ = false;
-    float pesoStretch_ = 0.0f;
+    int64_t rollInizio_ = 0;  // dove è partito il roll (campione della registrazione)
+    double rollPos_ = 0.0;    // dentro al pezzo che si ripete
+    bool rollVivo_ = false;
+    bool rollIndietro_ = false;
+    float pesoRoll_ = 0.0f;
     float wL_[kPezzo], wR_[kPezzo];
 };
 

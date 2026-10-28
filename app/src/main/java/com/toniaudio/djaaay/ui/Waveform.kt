@@ -83,19 +83,23 @@ fun WaveformDeck(
         drawRect(Colori.Sfondo)
         val wf = deck.waveform
         val caricamento = deck.caricamento
-        if (wf == null || caricamento != null) {
+        if (wf == null || wf.livelli.isEmpty()) {
             drawLine(Colori.Linea, Offset(0f, altezza / 2), Offset(size.width, altezza / 2), 1.dp.toPx())
             if (caricamento != null) {
                 drawRect(Colori.deck(deck.indice).copy(alpha = 0.5f), Offset(0f, altezza / 2 - 1.5.dp.toPx()), Size(size.width * caricamento, 3.dp.toPx()))
             }
             return@Canvas
         }
+        // mentre il brano si decodifica la waveform cresce (il brano si può già suonare)
         val pxAlSecondo = size.width / zoomSecondi
         disegnaOnda(deck, wf, pxAlSecondo, altezza)
         disegnaGriglia(deck, pxAlSecondo, altezza)
         // la parte già suonata è più scura
         drawRect(Colori.Sfondo.copy(alpha = 0.4f), size = Size(size.width / 2, altezza))
         disegnaPanoramica(deck, wf, altezza, panoramica)
+        if (caricamento != null) {
+            drawRect(Colori.deck(deck.indice).copy(alpha = 0.7f), Offset(0f, size.height - 1.5.dp.toPx()), Size(size.width * caricamento, 1.5.dp.toPx()))
+        }
     }
 }
 
@@ -176,9 +180,12 @@ private fun DrawScope.disegnaPanoramica(deck: StatoDeck, wf: com.toniaudio.djaaa
     val dati = wf.livelli[ultimo]
     val colonne = wf.colonne(ultimo)
     if (colonne == 0) return
+    // colonne in proporzione alla durata: mentre si decodifica la parte che manca resta vuota
+    val colonneTotali = if (deck.durata > 0) maxOf(colonne.toDouble(), deck.durata * wf.frequenza / wf.framePerColonna(ultimo)) else colonne.toDouble()
     var x = 0f
     while (x < size.width) {
-        val col = (x / size.width * colonne).toInt().coerceIn(0, colonne - 1)
+        val col = (x / size.width * colonneTotali).toInt()
+        if (col >= colonne) break
         val v = maxOf(dati[col].toInt() and 0xFF, dati[colonne + col].toInt() and 0xFF, dati[2 * colonne + col].toInt() and 0xFF) / 255f
         val h = v * altezza
         drawLine(Color.White.copy(alpha = 0.25f), Offset(x, y + (altezza - h) / 2), Offset(x, y + (altezza + h) / 2), 1.5f)

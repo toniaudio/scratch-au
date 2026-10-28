@@ -9,13 +9,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,16 +28,16 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChanged
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.toniaudio.djaaay.AzioneMidi
 import com.toniaudio.djaaay.Controllore
+import com.toniaudio.djaaay.AZIONI_PAD_FX
 import com.toniaudio.djaaay.EFFETTI
+import com.toniaudio.djaaay.LUNGHEZZE_ROLL
 import com.toniaudio.djaaay.StatoApp
-import com.toniaudio.djaaay.testoFx
 
 /** Scheda FX del mixer: un'unità per deck (FX · DECK A a sinistra, FX · DECK B a destra). */
 @Composable
@@ -50,8 +48,8 @@ fun PannelloFx(app: StatoApp, c: Controllore, modifier: Modifier = Modifier, gra
 }
 
 /**
- * Unità effetti di un deck: scelta dell'effetto (si accende dai pad FX del deck), manopole oppure trackpad
- * (tasto PAD), riga del tempo / della coda / del rapporto.
+ * Unità effetti di un deck: scelta dell'effetto, trackpad (l'effetto suona solo mentre il dito è sopra; un secondo
+ * dito lo blocca), riga del tempo / della coda / del verso. I valori si possono comandare anche da MIDI.
  */
 @Composable
 private fun UnitaFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier, grande: Boolean) {
@@ -68,25 +66,18 @@ private fun UnitaFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier, g
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(if (grande) 5.dp else 3.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Etichetta(
-                if (d == 1 && app.opzioni.unDeck) "FX · CAMPIONATORE" else "FX · DECK ${app.deck[d].lettera}",
-                Colori.Testo, if (grande) 12.sp else 8.5.sp,
-            )
-            Spacer(Modifier.weight(1f))
-            // PAD: trackpad al posto delle manopole (l'effetto si accende dai pad FX del deck o toccando il trackpad)
-            Tasto(Modifier.width(if (grande) 58.dp else 30.dp).height(if (grande) 28.dp else 16.dp), acceso = fx.padAperto, onTocco = { c.fxPad(d) }) {
-                Etichetta("PAD", if (fx.padAperto) Colori.Sfondo else Colori.Spento, if (grande) 12.sp else 7.5.sp)
-            }
-        }
-        // scelta dell'effetto: acceso = pieno, scelto ma spento = bordato
+        Etichetta(
+            if (d == 1 && app.opzioni.unDeck) "FX · CAMPIONATORE" else "FX · DECK ${app.deck[d].lettera}",
+            Colori.Testo, if (grande) 12.sp else 8.5.sp, Modifier.fillMaxWidth(),
+        )
+        // scelta dell'effetto: suona = pieno, scelto = bordato
         val righe = if (grande) listOf(listOf(0, 1, 2, 3)) else listOf(listOf(0, 1), listOf(2, 3))
         for (riga in righe) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (grande) 6.dp else 3.dp)) {
                 for (i in riga) {
                     val scelto = i == t
                     val suona = scelto && fx.acceso
-                    Assegnabile(app, c, AzioneMidi.FX_SUCCESSIVO, d, Modifier.weight(1f).height(alto)) {
+                    Assegnabile(app, c, AZIONI_PAD_FX[i], d, Modifier.weight(1f).height(alto)) {
                         Tasto(
                             Modifier.fillMaxSize(),
                             acceso = suona,
@@ -103,25 +94,8 @@ private fun UnitaFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier, g
                 }
             }
         }
-        if (fx.padAperto) {
-            // trackpad da solo: niente manopole (la riga sotto resta)
-            TrackpadFx(app, d, c, Modifier.weight(1f).fillMaxWidth(), grande)
-        } else {
-            // manopole: DRY/WET grande, poi i parametri dell'effetto. Stanno nello spazio che c'è: su uno schermo
-            // più basso del previsto la riga sotto non viene mai spinta fuori
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) {
-                    Assegnabile(app, c, AzioneMidi.FX_DRY_WET, d) {
-                        ManopolaFx(fx.dryWet[t], "DRY/WET", testoFx(t, 0, fx.dryWet[t]), if (grande) 46 else 24, grande) { c.fxManopola(d, 0, it) }
-                    }
-                    descr.parametri.forEachIndexed { k, nome ->
-                        val valore = if (k == 0) fx.param1[t] else fx.param2[t]
-                        Assegnabile(app, c, if (k == 0) AzioneMidi.FX_PARAM1 else AzioneMidi.FX_PARAM2, d) {
-                            ManopolaFx(valore, nome, testoFx(t, k + 1, valore), if (grande) 38 else 18, grande) { c.fxManopola(d, k + 1, it) }
-                        }
-                    }
-                }
-            }
+        Assegnabile(app, c, AzioneMidi.FX_ON, d, Modifier.weight(1f).fillMaxWidth()) {
+            TrackpadFx(app, d, c, Modifier.fillMaxSize(), grande)
         }
         Etichetta(descr.titoloRiga, Colori.Spento, if (grande) 10.sp else 6.5.sp)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (grande) 6.dp else 2.dp)) {
@@ -191,10 +165,10 @@ private fun TrackpadFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier
     ) {
         Canvas(Modifier.fillMaxSize()) {
             val griglia = Colori.Linea.copy(alpha = 0.6f)
-            for (k in 1..3) {
-                drawLine(griglia, Offset(size.width * k / 4, 0f), Offset(size.width * k / 4, size.height), 1f)
-                drawLine(griglia, Offset(0f, size.height * k / 4), Offset(size.width, size.height * k / 4), 1f)
-            }
+            for (k in 1..3) drawLine(griglia, Offset(size.width * k / 4, 0f), Offset(size.width * k / 4, size.height), 1f)
+            // ROLL: l'asse Y ha 5 lunghezze, una per fascia; gli altri effetti vanno a scala continua
+            val fasce = if (t == 3) LUNGHEZZE_ROLL.size else 4
+            for (k in 1 until fasce) drawLine(griglia, Offset(0f, size.height * k / fasce), Offset(size.width, size.height * k / fasce), 1f)
             val px = x * size.width
             val py = (1f - y) * size.height
             val colore = if (fx.acceso) Colori.Testo else Colori.Scuro
@@ -211,14 +185,5 @@ private fun TrackpadFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier
                     .padding(horizontal = 6.dp, vertical = 2.dp),
             )
         }
-    }
-}
-
-@Composable
-private fun ManopolaFx(valore: Float, nome: String, testo: String, diametro: Int, grande: Boolean, onCambia: (Float) -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Manopola(valore, onCambia, diametro = diametro.dp)
-        Text(testo, color = Colori.Testo, fontSize = if (grande) 12.sp else 7.5.sp, fontFamily = FontFamily.Monospace, maxLines = 1)
-        Etichetta(nome, Colori.Spento, if (grande) 10.sp else 6.5.sp)
     }
 }

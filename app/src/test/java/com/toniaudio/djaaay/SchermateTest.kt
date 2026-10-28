@@ -75,8 +75,8 @@ class SchermateTest {
     @Config(qualifiers = "w1280dp-h800dp-land-xhdpi")
     @Test fun tablet() = foto("0-tablet") { s, c ->
         s.mixer.tab = 1
-        c.fxPadTocco(0, 1)
-        c.fxPad(1)
+        c.fxTipo(0, 1)
+        c.fxTrackpadGiu(0, 0.5f, 0.6f)  // DUB DELAY sul deck A, dito appoggiato
     }
 
     @Test fun libreriaDeckA() = foto("2-libreria-deck-a") { s, _ -> s.deck[0].libreriaAperta = true }
@@ -89,26 +89,17 @@ class SchermateTest {
 
     @Test fun fx() = foto("6-fx") { s, c ->
         s.vista = 3
-        c.fxPadTocco(0, 1)  // DUB DELAY acceso sul deck A, manopole
-        c.fxTipo(1, 3)  // STRETCH sul deck B con il trackpad: dito giù + secondo dito = HOLD
-        c.fxPad(1)
-        c.fxTrackpadGiu(1, 0.7f, 0.3f)
+        c.fxTipo(0, 1)  // DUB DELAY scelto sul deck A, spento
+        c.fxTipo(1, 3)  // ROLL sul deck B: dito giù + secondo dito = HOLD
+        c.fxTrackpadGiu(1, 0.7f, 0.5f)
         c.fxTrackpadTieni(1)
         c.fxTrackpadSu(1)
     }
 
     @Test fun fxTrackpad() = foto("6b-fx-trackpad") { s, c ->
         s.vista = 3
-        c.fxPad(0)
-        c.fxPad(1)
         c.fxTipo(1, 2)
         c.fxTrackpadGiu(0, 0.45f, 0.6f)  // dito ancora appoggiato sul deck A
-    }
-
-    @Test fun deckFx() = foto("6c-deck-pad-fx") { s, c ->
-        s.deck[0].tabPad = 2
-        s.deck[1].tabPad = 1
-        c.fxPadTocco(0, 0)
     }
 
     @Test fun midiLearn() = foto("8-midi-learn") { s, c ->

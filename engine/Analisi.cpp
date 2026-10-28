@@ -97,35 +97,10 @@ bool caricaWaveform(const char* percorso, Waveform& w, Tempo& tempo) {
 
 namespace {
 
-std::vector<float> curvaAttacchi(const Traccia& t, int passo) {
-    const int64_t n = t.frame();
-    const int64_t finestre = n / passo;
-    std::vector<float> curva(static_cast<size_t>(std::max<int64_t>(finestre, 0)), 0.0f);
-    if (finestre < 2) return curva;
-    Isolatore3 eq;
-    eq.imposta(150.0f, 4000.0f, static_cast<float>(t.sampleRate));
-    float prima[3] = {0.0f, 0.0f, 0.0f};
-    const float peso[3] = {1.0f, 0.5f, 0.35f};
-    for (int64_t w = 0; w < finestre; ++w) {
-        double e[3] = {0.0, 0.0, 0.0};
-        for (int64_t i = w * passo; i < (w + 1) * passo; ++i) {
-            const float x = 0.5f * (t.campione(i, 0) + t.campione(i, 1));
-            float b, m, a;
-            eq.separa(x, b, m, a);
-            e[0] += b * b;
-            e[1] += m * m;
-            e[2] += a * a;
-        }
-        float flusso = 0.0f;
-        for (int k = 0; k < 3; ++k) {
-            const float v = std::log1p(1000.0f * static_cast<float>(std::sqrt(e[k] / passo)));
-            flusso += peso[k] * std::max(0.0f, v - prima[k]);
-            prima[k] = v;
-        }
-        curva[static_cast<size_t>(w)] = flusso;
-    }
-    // toglie la media mobile (~1 s): restano i picchi degli attacchi
-    const int mezzo = static_cast<int>(0.5 * t.sampleRate / passo);
+// Toglie la media mobile (~1 s) dalla curva grezza degli attacchi: restano i picchi
+std::vector<float> pulisci(const std::vector<float>& curva, double finestreAlSecondo) {
+    const auto finestre = static_cast<int64_t>(curva.size());
+    const int mezzo = static_cast<int>(0.5 * finestreAlSecondo);
     std::vector<float> pulita(curva.size(), 0.0f);
     double somma = 0.0;
     int64_t da = 0, a = -1;
@@ -183,12 +158,12 @@ double adattaGriglia(const std::vector<float>& c, double periodo, double& faseMi
 
 }  // namespace
 
-Tempo analizzaTempo(const Traccia& t) {
+// finestre di ~5,8 ms
+static int passoAttacchi(double sampleRate) { return std::max(32, static_cast<int>(std::lround(sampleRate * 0.0058))); }
+
+static Tempo tempoDaCurva(const std::vector<float>& grezza, double finestreAlSecondo) {
     Tempo tempo;
-    // finestre di ~5,8 ms
-    const int passo = std::max(64, static_cast<int>(std::lround(t.sampleRate * 0.0058)));
-    const double finestreAlSecondo = t.sampleRate / passo;
-    std::vector<float> c = curvaAttacchi(t, passo);
+    std::vector<float> c = pulisci(grezza, finestreAlSecondo);
     const size_t massimo = static_cast<size_t>(240.0 * finestreAlSecondo);  // bastano i primi 4 minuti
     if (c.size() > massimo) c.resize(massimo);
     if (c.size() < static_cast<size_t>(8.0 * finestreAlSecondo)) return tempo;  // troppo corto
@@ -238,36 +213,101 @@ Tempo analizzaTempo(const Traccia& t) {
     return tempo;
 }
 
-Waveform analizzaWaveform(const Traccia& t) {
-    Waveform w;
-    const int64_t n = t.frame();
-    const int64_t colonne = (n + Waveform::kFramePerColonna - 1) / Waveform::kFramePerColonna;
-    Waveform::Livello base;
-    base.bassi.resize(static_cast<size_t>(colonne));
-    base.medi.resize(static_cast<size_t>(colonne));
-    base.alti.resize(static_cast<size_t>(colonne));
+AnalisiProgressiva::AnalisiProgressiva(double sampleRate) : sr_(0.5 * sampleRate), passo_(passoAttacchi(0.5 * sampleRate)) {
+    // stesse bande dell'EQ del mixer (250 Hz e 2,5 kHz) per la waveform; per gli attacchi 150 Hz e 4 kHz
+    eqOnda_.imposta(250.0f, 2500.0f, static_cast<float>(sr_));
+    eqTempo_.imposta(150.0f, std::min(4000.0f, 0.4f * static_cast<float>(sr_)), static_cast<float>(sr_));
+}
 
-    // Stesse bande dell'EQ del mixer (250 Hz e 2,5 kHz), sul mono L+R
-    Isolatore3 eq;
-    eq.imposta(250.0f, 2500.0f, static_cast<float>(t.sampleRate));
-    for (int64_t c = 0; c < colonne; ++c) {
-        float pb = 0.0f, pm = 0.0f, pa = 0.0f;
-        const int64_t fine = std::min(n, (c + 1) * Waveform::kFramePerColonna);
-        for (int64_t i = c * Waveform::kFramePerColonna; i < fine; ++i) {
-            const float x = 0.5f * (t.campione(i, 0) + t.campione(i, 1));
-            float b, m, a;
-            eq.separa(x, b, m, a);
-            pb = std::max(pb, std::fabs(b));
-            pm = std::max(pm, std::fabs(m));
-            pa = std::max(pa, std::fabs(a));
-        }
-        base.bassi[c] = scala(pb);
-        base.medi[c] = scala(pm);
-        base.alti[c] = scala(pa);
+// Fine di una colonna della waveform (picchi di bassi, medi e alti)
+void AnalisiProgressiva::chiudiColonna() {
+    base_.bassi.push_back(scala(picco_[0]));
+    base_.medi.push_back(scala(picco_[1]));
+    base_.alti.push_back(scala(picco_[2]));
+    picco_[0] = picco_[1] = picco_[2] = 0.0f;
+    inColonna_ = 0;
+}
+
+// Fine di una finestra della curva degli attacchi: dove l'energia di una banda cresce di colpo (la cassa pesa di più)
+void AnalisiProgressiva::chiudiFinestra() {
+    const float peso[3] = {1.0f, 0.5f, 0.35f};
+    float flusso = 0.0f;
+    for (int k = 0; k < 3; ++k) {
+        const float v = std::log1p(1000.0f * static_cast<float>(std::sqrt(energia_[k] / passo_)));
+        // la prima finestra non ha un "prima": come se la precedente fosse silenzio
+        flusso += peso[k] * std::max(0.0f, v - prima_[k]);
+        prima_[k] = v;
+        energia_[k] = 0.0;
     }
-    w.livelli.push_back(std::move(base));
+    attacchi_.push_back(flusso);
+    inFinestra_ = 0;
+}
+
+// Un solo passaggio sul mono L+R per tutte e due le analisi
+void AnalisiProgressiva::aggiorna(const Traccia& t) {
+    int64_t quanti = 0;
+    while (const int16_t* p = t.pezzo(fatti_, quanti)) {
+        for (int64_t i = 0; i < quanti; ++i) {
+            const float mono = (static_cast<float>(p[2 * i]) + static_cast<float>(p[2 * i + 1])) * (0.5f / 32768.0f);
+            if (!dispari_) {
+                meta_ = mono;
+                dispari_ = true;
+                continue;
+            }
+            dispari_ = false;
+            const float x = 0.5f * (meta_ + mono);
+            float b, m, a;
+            eqOnda_.separa(x, b, m, a);
+            picco_[0] = std::max(picco_[0], std::fabs(b));
+            picco_[1] = std::max(picco_[1], std::fabs(m));
+            picco_[2] = std::max(picco_[2], std::fabs(a));
+            if (++inColonna_ == Waveform::kFramePerColonna / 2) chiudiColonna();
+            eqTempo_.separa(x, b, m, a);
+            energia_[0] += b * b;
+            energia_[1] += m * m;
+            energia_[2] += a * a;
+            if (++inFinestra_ == passo_) chiudiFinestra();
+        }
+        fatti_ += quanti;
+    }
+}
+
+void AnalisiProgressiva::finisci(const Traccia& t) {
+    aggiorna(t);
+    // l'ultima colonna, più corta (l'ultima finestra incompleta invece non conta)
+    if (inColonna_ > 0 || dispari_) {
+        if (dispari_) {
+            const float x = meta_;
+            float b, m, a;
+            eqOnda_.separa(x, b, m, a);
+            picco_[0] = std::max(picco_[0], std::fabs(b));
+            picco_[1] = std::max(picco_[1], std::fabs(m));
+            picco_[2] = std::max(picco_[2], std::fabs(a));
+            dispari_ = false;
+        }
+        chiudiColonna();
+    }
+}
+
+Waveform AnalisiProgressiva::waveform() const {
+    Waveform w;
+    w.livelli.push_back(base_);
     costruisciLivelli(w);
     return w;
+}
+
+Tempo AnalisiProgressiva::tempo() const { return tempoDaCurva(attacchi_, sr_ / passo_); }
+
+Waveform analizzaWaveform(const Traccia& t) {
+    AnalisiProgressiva a(t.sampleRate);
+    a.finisci(t);
+    return a.waveform();
+}
+
+Tempo analizzaTempo(const Traccia& t) {
+    AnalisiProgressiva a(t.sampleRate);
+    a.finisci(t);
+    return a.tempo();
 }
 
 }  // namespace djaaay

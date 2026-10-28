@@ -50,9 +50,9 @@ inline void leggiFiltrato(const Traccia& t, double pos, double passo, float& l, 
 Deck::Deck() = default;
 
 Deck::~Deck() {
-    delete traccia_;
+    Traccia::rilascia(traccia_);
     ComandoDeck c;
-    while (comandi_.ricevi(c)) delete c.traccia;
+    while (comandi_.ricevi(c)) Traccia::rilascia(c.traccia);
     raccogliTracceVecchie();
 }
 
@@ -73,12 +73,12 @@ void Deck::carica(Traccia* t) {
     ComandoDeck c;
     c.tipo = ComandoDeck::Carica;
     c.traccia = t;
-    if (!invia(c)) delete t;
+    if (!invia(c)) Traccia::rilascia(t);
 }
 
 void Deck::raccogliTracceVecchie() {
     Traccia* t = nullptr;
-    while (daLiberare_.ricevi(t)) delete t;
+    while (daLiberare_.ricevi(t)) Traccia::rilascia(t);
 }
 
 void Deck::salta(double nuovaPos, bool perKeylock) {
@@ -221,7 +221,7 @@ void Deck::renderBlocco(float* l, float* r, int frame, const float* timecode) {
     }
 
     const Traccia& t = *traccia_;
-    const double fine = static_cast<double>(t.frame());
+    const double fine = static_cast<double>(t.lunghezza());
     const double velNormale = base_ * (1.0 + pitch.load(std::memory_order_relaxed));
 
     // Frizione 0 → costante di tempo 0,6 s (scivola), 1 → 20 ms (riparte subito)

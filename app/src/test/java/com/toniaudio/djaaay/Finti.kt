@@ -55,14 +55,19 @@ class PiattaformaFinta(var brani: List<Brano> = emptyList()) : Piattaforma {
     override fun haPermessoLibreria() = true
     override fun chiediPermessoLibreria() {}
     override suspend fun leggiLibreria() = brani
-    override suspend fun carica(brano: Brano, progresso: (Float) -> Unit): BranoCaricato {
-        progresso(0.5f)
-        return BranoCaricato(brano.id, 98.0, 0.37, brano.durataMs / 1000.0, waveformFinta(brano.durataMs / 1000.0, 98.0, 0.37, 0))
+    var pausa: kotlinx.coroutines.CompletableDeferred<Unit>? = null  // ferma il caricamento dopo l'inizio
+    /** Come quella vera: prima l'inizio (senza BPM), poi a metà, poi la fine. */
+    override suspend fun carica(brano: Brano, aggiorna: (BranoCaricato) -> Unit) {
+        val durata = brano.durataMs / 1000.0
+        val wf = waveformFinta(durata, 98.0, 0.37, 0)
+        aggiorna(BranoCaricato(brano.id, 0.0, 0.0, durata, wf, 0.1f, false))
+        pausa?.await()
+        aggiorna(BranoCaricato(brano.id, 0.0, 0.0, durata, wf, 0.5f, false))
+        aggiorna(BranoCaricato(brano.id, 98.0, 0.37, durata, wf, 1f, true))
     }
     override fun mettiNelDeck(caricato: BranoCaricato, deck: Int) {
         caricati += caricato.handle to deck
     }
-    override fun scarta(caricato: BranoCaricato) {}
     var permessoIngresso = true
     var schede = listOf(SchedaAudio(7, "Behringer UMC404HD", 4, true))
     var ingressoAperto: Pair<Int, Int>? = null

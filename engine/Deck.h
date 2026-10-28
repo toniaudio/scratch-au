@@ -22,7 +22,7 @@ namespace djaaay {
 // Messaggi dall'interfaccia al deck (passano dalla coda, li applica il thread audio).
 struct ComandoDeck {
     enum Tipo : uint8_t {
-        Carica,        // traccia = nuova traccia (il deck ne diventa proprietario)
+        Carica,        // traccia = nuova traccia (il deck ne prende un riferimento)
         Play,          // a = 1 acceso, 0 spento
         PlayPausa,
         CueGiu,        // tasto CUE premuto

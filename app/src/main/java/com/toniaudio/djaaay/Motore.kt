@@ -21,15 +21,21 @@ object Motore {
     external fun impostaBuffer(multiplo: Int)
     external fun diagnostica(): String
 
-    // --- caricamento dei brani (vedi Decodificatore)
-    external fun nuovaTraccia(sampleRate: Int, frameAttesi: Long): Long
+    // --- caricamento dei brani (vedi PiattaformaAndroid.carica): il brano si può suonare mentre si decodifica
+    /** `cache` = file di analisi del brano: se c'è, waveform e BPM sono pronti subito. */
+    external fun nuovaTraccia(sampleRate: Int, frameAttesi: Long, cache: String?): Long
     external fun aggiungiPcm(handle: Long, buffer: java.nio.ByteBuffer, offset: Int, byte: Int, canali: Int, formatoFloat: Boolean): Boolean
     external fun frequenzaTraccia(handle: Long, sampleRate: Int)
-    /** [bpm, prima battuta in s, durata in s]; usa/crea il file di analisi `cache`. */
-    external fun analizza(handle: Long, cache: String?): DoubleArray
-    /** Per livello di zoom: [bassi…, medi…, alti…], colonne di 64·2^livello frame del brano. */
+    /** Analizza la parte arrivata (da un altro thread rispetto alla decodifica); restituisce i secondi decodificati. */
+    external fun analizza(handle: Long): Double
+    /** Dopo la decodifica: analisi finita e salvata in `cache`. [bpm, prima battuta in s, durata in s] */
+    external fun concludi(handle: Long, cache: String?): DoubleArray
+    /** [bpm, prima battuta, frequenza del brano]; bpm 0 = non ancora noto. */
+    external fun tempo(handle: Long): DoubleArray
+    /** Per livello di zoom: [bassi…, medi…, alti…], colonne di 64·2^livello frame del brano (fin dove è arrivata). */
     external fun waveform(handle: Long): Array<ByteArray>
     external fun caricaNelDeck(handle: Long, deck: Int)
+    /** Fine del caricamento: il deck o il campionatore che usa il brano lo tiene. */
     external fun scartaTraccia(handle: Long)
 
     // --- comandi e stato (vedi Ponte)

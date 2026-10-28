@@ -13,8 +13,12 @@ import android.media.MediaFormat
 import android.os.Build
 import android.provider.MediaStore
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
@@ -90,7 +94,12 @@ class PiattaformaAndroid(
         brani
     }
 
-    override suspend fun carica(brano: Brano, progresso: (Float) -> Unit): BranoCaricato = withContext(Dispatchers.IO) {
+    /**
+     * Decodifica a pezzi: appena c'è il primo secondo il brano va nel deck e si può suonare; la decodifica continua
+     * (il codec riceve sempre tutti i pezzi che può, senza attese inutili) e intanto un altro thread analizza
+     * waveform e BPM. Se il brano è già stato analizzato una volta, waveform e BPM arrivano subito dal file.
+     */
+    override suspend fun carica(brano: Brano, aggiorna: (BranoCaricato) -> Unit): Unit = withContext(Dispatchers.IO) {
         val estrattore = MediaExtractor()
         var codec: MediaCodec? = null
         var handle = 0L
@@ -106,67 +115,93 @@ class PiattaformaAndroid(
             var frequenza = formato.getInteger(MediaFormat.KEY_SAMPLE_RATE)
             var canali = formato.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
             var inFloat = false
-            handle = Motore.nuovaTraccia(frequenza, durataUs * frequenza / 1_000_000 + 4096)
+            val cache = File(File(context.cacheDir, "analisi").apply { mkdirs() }, "${brano.chiave}.dvsw").absolutePath
+            handle = Motore.nuovaTraccia(frequenza, durataUs * frequenza / 1_000_000, cache)
+            val h = handle
+            val durataPrevista = durataUs / 1e6
 
-            codec = MediaCodec.createDecoderByType(mime)
-            codec.configure(formato, null, null, 0)
-            codec.start()
-            val info = MediaCodec.BufferInfo()
-            var fineIngresso = false
-            var fineUscita = false
-            var ultimoProgresso = -1
-            while (!fineUscita) {
-                ensureActive()  // caricamento annullato (es. altro brano scelto)
-                if (!fineIngresso) {
-                    val i = codec.dequeueInputBuffer(10_000)
-                    if (i >= 0) {
-                        val buffer = codec.getInputBuffer(i)!!
-                        val n = estrattore.readSampleData(buffer, 0)
+            val dec = MediaCodec.createDecoderByType(mime)
+            codec = dec
+            dec.configure(formato, null, null, 0)
+            dec.start()
+
+            coroutineScope {
+                // analisi in parallelo alla decodifica: legge solo la parte già decodificata
+                val decodificaFinita = CompletableDeferred<Unit>()
+                val analisi = launch(Dispatchers.Default) {
+                    var ultimoInvio = 0L
+                    var inviato = false
+                    while (!decodificaFinita.isCompleted) {
+                        val secondi = Motore.analizza(h)
+                        val ora = System.nanoTime()
+                        // il primo aggiornamento appena c'è un secondo di musica, poi ~4 volte al secondo
+                        if ((!inviato && secondi >= 1.0) || (inviato && ora - ultimoInvio > 250_000_000L)) {
+                            inviato = true
+                            ultimoInvio = ora
+                            val tempo = Motore.tempo(h)
+                            val wf = Waveform(Motore.waveform(h).toList(), tempo[2].toInt())
+                            val progresso = if (durataPrevista > 0) (secondi / durataPrevista).toFloat().coerceIn(0f, 0.99f) else 0f
+                            withContext(Dispatchers.Main) {
+                                aggiorna(BranoCaricato(h, tempo[0], tempo[1], maxOf(durataPrevista, secondi), wf, progresso, false))
+                            }
+                        }
+                        delay(15)
+                    }
+                    // fine: analisi completata (e salvata), durata vera
+                    val r = Motore.concludi(h, cache)
+                    val wf = Waveform(Motore.waveform(h).toList(), Motore.tempo(h)[2].toInt())
+                    withContext(Dispatchers.Main) { aggiorna(BranoCaricato(h, r[0], r[1], r[2], wf, 1f, true)) }
+                }
+
+                val info = MediaCodec.BufferInfo()
+                var fineIngresso = false
+                var fineUscita = false
+                while (!fineUscita) {
+                    ensureActive()  // caricamento annullato (es. altro brano scelto)
+                    var lavorato = false
+                    // tutti i pezzi che il codec può prendere, senza aspettare
+                    while (!fineIngresso) {
+                        val i = dec.dequeueInputBuffer(0)
+                        if (i < 0) break
+                        lavorato = true
+                        val n = estrattore.readSampleData(dec.getInputBuffer(i)!!, 0)
                         if (n < 0) {
-                            codec.queueInputBuffer(i, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                            dec.queueInputBuffer(i, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                             fineIngresso = true
                         } else {
-                            codec.queueInputBuffer(i, 0, n, estrattore.sampleTime, 0)
-                            if (durataUs > 0) {
-                                val p = (estrattore.sampleTime * 100 / durataUs).toInt()
-                                if (p != ultimoProgresso) {
-                                    ultimoProgresso = p
-                                    withContext(Dispatchers.Main) { progresso(0.9f * p / 100f) }
-                                }
-                            }
+                            dec.queueInputBuffer(i, 0, n, estrattore.sampleTime, 0)
                             estrattore.advance()
                         }
                     }
-                }
-                val o = codec.dequeueOutputBuffer(info, 10_000)
-                when {
-                    o >= 0 -> {
-                        if (info.size > 0) {
-                            val uscita = codec.getOutputBuffer(o)!!
-                            Motore.aggiungiPcm(handle, uscita, info.offset, info.size, canali, inFloat)
+                    // tutto quello che è pronto in uscita; si aspetta un attimo solo se non c'era niente da fare
+                    while (true) {
+                        val o = dec.dequeueOutputBuffer(info, if (lavorato) 0L else 2_000L)
+                        if (o == MediaCodec.INFO_TRY_AGAIN_LATER) break
+                        lavorato = true
+                        if (o == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                            // il formato vero (es. AAC con SBR: frequenza doppia) si conosce solo qui
+                            val f = dec.outputFormat
+                            frequenza = f.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+                            canali = f.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+                            inFloat = f.containsKey(MediaFormat.KEY_PCM_ENCODING) &&
+                                f.getInteger(MediaFormat.KEY_PCM_ENCODING) == AudioFormat.ENCODING_PCM_FLOAT
+                            Motore.frequenzaTraccia(h, frequenza)
+                        } else if (o >= 0) {
+                            if (info.size > 0) Motore.aggiungiPcm(h, dec.getOutputBuffer(o)!!, info.offset, info.size, canali, inFloat)
+                            dec.releaseOutputBuffer(o, false)
+                            if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) {
+                                fineUscita = true
+                                break
+                            }
                         }
-                        codec.releaseOutputBuffer(o, false)
-                        if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) fineUscita = true
-                    }
-                    o == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
-                        // il formato vero (es. AAC con SBR: frequenza doppia) si conosce solo qui
-                        val f = codec.outputFormat
-                        frequenza = f.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-                        canali = f.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-                        inFloat = f.containsKey(MediaFormat.KEY_PCM_ENCODING) &&
-                            f.getInteger(MediaFormat.KEY_PCM_ENCODING) == AudioFormat.ENCODING_PCM_FLOAT
-                        Motore.frequenzaTraccia(handle, frequenza)
                     }
                 }
+                decodificaFinita.complete(Unit)
+                analisi.join()
             }
-            withContext(Dispatchers.Main) { progresso(0.92f) }
-            // waveform e BPM: dal file di analisi se il brano è già stato caricato, altrimenti calcolati e salvati
-            val cartella = File(context.cacheDir, "analisi").apply { mkdirs() }
-            val analisi = Motore.analizza(handle, File(cartella, "${brano.chiave}.dvsw").absolutePath)
-            val waveform = Waveform(Motore.waveform(handle).toList(), frequenza)
-            BranoCaricato(handle, analisi[0], analisi[1], analisi[2], waveform).also { handle = 0L }
         } finally {
-            if (handle != 0L) Motore.scartaTraccia(handle)  // errore o annullamento: si libera la memoria
+            // finito, annullato o errore: il deck che usa il brano lo tiene, il resto si libera
+            if (handle != 0L) Motore.scartaTraccia(handle)
             try {
                 codec?.stop()
             } catch (_: Exception) {
@@ -177,8 +212,6 @@ class PiattaformaAndroid(
     }
 
     override fun mettiNelDeck(caricato: BranoCaricato, deck: Int) = Motore.caricaNelDeck(caricato.handle, deck)
-
-    override fun scarta(caricato: BranoCaricato) = Motore.scartaTraccia(caricato.handle)
 
     override fun avviaRec(): String? = Registrazione.avvia(context)
 

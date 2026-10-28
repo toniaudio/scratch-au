@@ -5,7 +5,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import android.os.Build
+import android.view.RoundedCorner
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -21,23 +25,33 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.toniaudio.djaaay.AzioneMidi
 import com.toniaudio.djaaay.Controllore
 import com.toniaudio.djaaay.StatoApp
 import com.toniaudio.djaaay.StatoDeck
+import kotlin.math.sqrt
 
 /** In alto: per deck libreria (all'estremità), lettera, titolo, BPM, tempo che manca. Al centro DVS = opzioni. */
 @Composable
 fun BarraAlta(app: StatoApp, c: Controllore, modifier: Modifier = Modifier) {
     val telefono = LocalMisure.current.telefono
+    val altezza = if (telefono) 44.dp else 38.dp
+    // gli angoli arrotondati dello schermo non devono mangiare i tasti della libreria alle estremità
+    val (angoloS, angoloD) = marginiAngoli(altezza)
+    val base = if (telefono) 6.dp else 10.dp
     Row(
-        modifier.fillMaxWidth().height(if (telefono) 38.dp else 34.dp).background(Colori.Barra).padding(horizontal = if (telefono) 6.dp else 10.dp),
+        modifier.fillMaxWidth().height(altezza).background(Colori.Barra)
+            .padding(start = maxOf(base, angoloS), end = maxOf(base, angoloD)),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -53,6 +67,30 @@ fun BarraAlta(app: StatoApp, c: Controllore, modifier: Modifier = Modifier) {
         }
         if (app.opzioni.unDeck) InfoCampionatore(app, Modifier.weight(1f)) else InfoDeck(app, app.deck[1], c, Modifier.weight(1f))
     }
+}
+
+/**
+ * Quanto stare lontani dai bordi sinistro e destro perché un tasto alto quasi quanto la barra non finisca nella
+ * curva degli angoli dello schermo (Android 12+; prima, o se lo schermo non lo dice, 0). Si tiene conto del foro della
+ * fotocamera, che la schermata lascia già fuori.
+ */
+@Composable
+private fun marginiAngoli(altezza: Dp): Pair<Dp, Dp> {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return 0.dp to 0.dp
+    val display = LocalContext.current.display ?: return 0.dp to 0.dp
+    val densita = LocalDensity.current
+    val direzione = LocalLayoutDirection.current
+    val fotoS = with(densita) { WindowInsets.displayCutout.getLeft(densita, direzione).toDp() }
+    val fotoD = with(densita) { WindowInsets.displayCutout.getRight(densita, direzione).toDp() }
+    fun margine(posizione: Int): Dp {
+        val raggio = with(densita) { (display.getRoundedCorner(posizione)?.radius ?: 0).toFloat().toDp() }.value
+        // il tasto parte ~6 dp sotto il bordo alto: dove la curva dell'angolo è a quell'altezza, più 3 dp di aria
+        val y = minOf(raggio, (altezza.value - 32f) / 2f)
+        if (raggio <= 0f) return 0.dp
+        val dentro = raggio - sqrt(maxOf(0f, raggio * raggio - (raggio - y) * (raggio - y)))
+        return (dentro + 3f).dp
+    }
+    return maxOf(0.dp, margine(RoundedCorner.POSITION_TOP_LEFT) - fotoS) to maxOf(0.dp, margine(RoundedCorner.POSITION_TOP_RIGHT) - fotoD)
 }
 
 /** One Deck: al posto del deck B, quanti suoni ha il campionatore e quanti ne suonano. */

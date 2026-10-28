@@ -110,6 +110,22 @@ class ControlloreTest {
     }
 
     @Test
+    fun ilBranoSuonaGiaMentreSiCarica() {
+        val pausa = kotlinx.coroutines.CompletableDeferred<Unit>()
+        piattaforma.pausa = pausa
+        c.caricaBrano(1, branoFinto(9, "Lungo", "", 400))
+        // l'inizio è pronto: il brano è già nel deck, il resto arriva
+        assertEquals(listOf(9L to 1), piattaforma.caricati)
+        assertEquals("Lungo", stato.deck[1].brano?.titolo)
+        assertEquals(0.1f, stato.deck[1].caricamento)
+        assertEquals(0.0, stato.deck[1].bpm, 0.0)
+        pausa.complete(Unit)
+        assertNull(stato.deck[1].caricamento)
+        assertEquals(98.0, stato.deck[1].bpm, 0.0)
+        assertEquals(1, piattaforma.caricati.size)  // nel deck una volta sola
+    }
+
+    @Test
     fun opzioniSalvateERilette() {
         stato.opzioni.frizione = 0.8f
         c.curva(2)
@@ -136,24 +152,34 @@ class ControlloreTest {
     }
 
     @Test
-    fun padFxToccoAccendeESpegneTenutoEMomentaneo() {
-        c.fxPadTocco(0, 1)  // DUB
+    fun fxDalMidiSuonaFinchePremutoEHold() {
+        // tasto "FX Roll": sceglie il ROLL e suona finché è premuto
+        c.learnScegli(AzioneMidi.FX_ROLL, 0)
+        nota(40, 127)
+        nota(40, 0)  // assegnato
+        nota(40, 127)
         assertTrue(stato.deck[0].fx.acceso)
-        assertEquals(1, stato.deck[0].fx.tipo)
-        assertEquals(1f, ponte.fx[Triple(0, ParFx.ACCESO, 1)])
-        c.fxPadTocco(0, 1)  // stesso pad: si spegne
+        assertEquals(3, stato.deck[0].fx.tipo)
+        assertEquals(1f, ponte.fx[Triple(0, ParFx.ACCESO, 3)])
+        nota(40, 0)
         assertEquals(false, stato.deck[0].fx.acceso)
-        c.fxPadTocco(0, 1)
-        c.fxPadTocco(0, 2)  // altro pad: cambia effetto e resta acceso
-        assertEquals(2, stato.deck[0].fx.tipo)
+        // tasto HOLD mentre suona: resta acceso anche lasciando; premuto di nuovo lo spegne
+        c.learnScegli(AzioneMidi.FX_HOLD, 0)
+        nota(41, 127)
+        nota(41, 0)
+        nota(40, 127)
+        nota(41, 127)
+        nota(41, 0)
+        nota(40, 0)
         assertTrue(stato.deck[0].fx.acceso)
-        c.fxPadRilascia(0)  // era un tocco, non si spegne
-        assertTrue(stato.deck[0].fx.acceso)
-        c.fxAcceso(0, false)
-        c.fxPadTieni(0, 3)  // tenuto: acceso finché non si lascia
-        assertTrue(stato.deck[0].fx.acceso)
-        c.fxPadRilascia(0)
+        assertTrue(stato.deck[0].fx.hold)
+        nota(41, 127)
         assertEquals(false, stato.deck[0].fx.acceso)
+        // i valori restano comandabili da manopole MIDI
+        c.learnScegli(AzioneMidi.FX_DRY_WET, 0)
+        cc(0, 30, 10)
+        cc(0, 30, 0)
+        assertEquals(0f, stato.deck[0].fx.dryWet[3])
     }
 
     @Test
@@ -170,8 +196,9 @@ class ControlloreTest {
         c.impostaPitch(1, 0.05f)
         c.aggiornaDaMotore()
         assertEquals((0.6 / 1.05).toFloat(), ponte.fx[Triple(1, ParFx.BATTITO, 0)]!!, 1e-5f)
-        assertEquals("fisso", testoFx(3, 2, 0.5f))
-        assertEquals("+12 st", testoFx(3, 2, 1f))
+        assertEquals("1/16", testoFx(3, 1, 0f))
+        assertEquals("1/4", testoFx(3, 1, 0.5f))
+        assertEquals("1", testoFx(3, 1, 1f))
     }
 
     private fun cc(canale: Int, numero: Int, valore: Int) = c.midi(MessaggioMidi(SorgenteMidi(false, canale, numero), valore))
@@ -331,12 +358,13 @@ class ControlloreTest {
         assertTrue(stato.deck[0].fx.acceso)
         c.fxTrackpadSu(0)
         assertEquals(false, stato.deck[0].fx.acceso)
-        // già acceso dal pad del deck: il trackpad lo modula e non lo spegne
-        c.fxPadTocco(0, 3)  // STRETCH: Y = tono
-        c.fxTrackpadGiu(0, 1f, 1f)
-        assertEquals(1f, stato.deck[0].fx.param2[3])
-        c.fxTrackpadSu(0)
+        // ROLL: Y = lunghezza
+        c.fxTipo(0, 3)
+        c.fxTrackpadGiu(0, 1f, 0.95f)
+        assertEquals(0.95f, stato.deck[0].fx.param1[3])
         assertTrue(stato.deck[0].fx.acceso)
+        c.fxTrackpadSu(0)
+        assertEquals(false, stato.deck[0].fx.acceso)
     }
 
     @Test

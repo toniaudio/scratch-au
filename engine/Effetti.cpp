@@ -9,7 +9,7 @@ namespace {
 
 constexpr double kMaxRitardo = 4.4;   // secondi (4 battiti fino a ~55 BPM)
 constexpr double kLinea = 4.7;        // la linea è un po' più lunga: c'è la modulazione del dub
-constexpr double kCattura = 12.0;     // secondi di deck tenuti per lo STRETCH
+constexpr double kCattura = 10.0;     // secondi di deck tenuti per il ROLL (il pezzo più lungo è 1 battito)
 constexpr float kStanzaMax = 1.5f;    // la STANZA va da 0,5 a 1,5 volte le lunghezze di Freeverb
 constexpr float kCoda[kNumCode] = {0.76f, 0.86f, 0.94f};
 constexpr int kVitaSecondi = 30;      // dopo lo spegnimento le code si elaborano al massimo per tanto
@@ -41,9 +41,9 @@ float Effetto::Linea::leggi(const std::vector<float>& b, double ritardo) const {
 
 Effetto::Effetto() {
     const float dw[4] = {0.35f, 0.45f, 0.30f, 1.0f};
-    const float p1[4] = {0.4f, 0.7f, 0.7f, 0.3f};
-    const float p2[4] = {0.0f, 0.2f, 0.5f, 0.5f};
-    const int sc[4] = {1, 3, 2, 0};  // 1/4 · 3/4 · lunga · ½×
+    const float p1[4] = {0.4f, 0.7f, 0.7f, 0.5f};
+    const float p2[4] = {0.0f, 0.2f, 0.5f, 0.0f};
+    const int sc[4] = {1, 3, 2, 0};  // 1/4 · 3/4 · lunga · avanti
     for (int t = 0; t < 4; ++t) {
         dryWet[t].store(dw[t]);
         param1[t].store(p1[t]);
@@ -57,7 +57,7 @@ void Effetto::prepara(double sampleRate) {
     const float sr = static_cast<float>(sampleRate);
     kRampa_ = coeffSmooth(0.015f, sr);
     kTempo_ = coeffSmooth(0.08f, sr);
-    kCodaStretch_ = coeffSmooth(0.15f, sr);
+    incrocio_ = std::max(8, static_cast<int>(0.004 * sampleRate));
     coeffLpEco_ = std::exp(-2.0f * kPi * 9000.0f / sr);
 
     const int linea = static_cast<int>(kLinea * sampleRate) + 8;
@@ -82,9 +82,11 @@ void Effetto::prepara(double sampleRate) {
         mandata_[e] = 0.0f;
         vita_[e] = 0;
     }
-    stretchVivo_ = false;
-    pesoStretch_ = 0.0f;
+    rollVivo_ = false;
+    pesoRoll_ = 0.0f;
 }
+
+int indiceRoll(float param1) { return std::clamp(static_cast<int>(param1 * kNumRoll), 0, kNumRoll - 1); }
 
 void Effetto::svuota(int e) {
     if (e == kEcho) {
@@ -132,7 +134,7 @@ void Effetto::pezzo(float* l, float* r, int n) {
         return std::clamp(static_cast<double>(kBattute[bi] * battito), 0.005, kMaxRitardo) * sr_;
     };
 
-    // Il deck viene sempre registrato negli ultimi secondi: lo STRETCH parte da "adesso"
+    // Il deck viene sempre registrato negli ultimi secondi: il ROLL parte da "adesso"
     const auto cap = static_cast<int64_t>(catturaL_.size());
     for (int i = 0; i < n; ++i) {
         const auto k = static_cast<size_t>((catturati_ + i) % cap);
@@ -244,65 +246,53 @@ void Effetto::pezzo(float* l, float* r, int n) {
         }
     }
 
-    // --- STRETCH granulare: grani a campana (si sovrappongono a metà) presi dagli ultimi secondi del deck.
-    // Il punto da cui si prendono avanza più piano del tempo (½× ¼× ⅛×) o resta fermo (FREEZE): il tono resta.
-    const bool vuoleStretch = on && t == kStretch;
-    if (vuoleStretch && !stretchVivo_) {
-        stretchVivo_ = true;
-        lettura_ = static_cast<double>(catturati_ - n);  // dall'inizio di questo blocco
-        for (auto& g : grani_) g.durata = 0;
-        prossimoGrano_ = 0;
+    // --- ROLL: il pezzo che parte da quando lo si accende (INDIETRO: quello appena prima, letto al contrario) si
+    // ripete finché è acceso. Il primo giro in avanti è il suono stesso del deck: si entra senza salti.
+    // La lunghezza (asse Y) si può cambiare mentre gira; al giro una dissolvenza di ~4 ms evita il click.
+    const bool vuoleRoll = on && t == kRoll;
+    if (vuoleRoll && !rollVivo_) {
+        rollVivo_ = true;
+        rollIndietro_ = scelta[kRoll].load(std::memory_order_relaxed) == 1;
+        rollInizio_ = catturati_ - n;  // dall'inizio di questo blocco
+        rollPos_ = 0.0;
     }
-    if (stretchVivo_) {
-        const float rapporto = kRapporti[std::clamp(scelta[kStretch].load(std::memory_order_relaxed), 0, kNumRapporti - 1)];
-        const int durata = std::max(16, static_cast<int>((0.010 + 0.110 * p1[kStretch]) * sr_)) & ~1;  // pari: i grani si danno il cambio esatto
-        // TONO: centro = fisso, ai lati fino a ±12 semitoni
-        const float semitoni = std::fabs(p2[kStretch] - 0.5f) < 0.03f ? 0.0f : (p2[kStretch] - 0.5f) * 24.0f;
-        const double passo = std::pow(2.0, semitoni / 12.0);
-        const float bersaglio = vuoleStretch ? 1.0f : 0.0f;
-        // troppo indietro (stretch tenuto a lungo): si salta avanti, la memoria è a giro
-        if (static_cast<double>(catturati_) - lettura_ > static_cast<double>(cap) * 0.8)
-            lettura_ = static_cast<double>(catturati_) - static_cast<double>(cap) * 0.5;
+    if (rollVivo_) {
+        const double lunghezza = std::clamp(static_cast<double>(kBattitiRoll[indiceRoll(p1[kRoll])] * battito) * sr_,
+                                            4.0 * incrocio_, static_cast<double>(cap) * 0.3);
+        if (rollPos_ >= lunghezza) rollPos_ = std::fmod(rollPos_, lunghezza);
+        const double piu = static_cast<double>(std::max<int64_t>(0, catturati_ - cap + 2));  // più vecchio in memoria
+        auto leggi = [&](double offset, float& sl, float& sr) {
+            // avanti: dal punto di partenza in poi; indietro: dal punto di partenza all'indietro
+            double p = rollIndietro_ ? static_cast<double>(rollInizio_) - 1.0 - offset : static_cast<double>(rollInizio_) + offset;
+            p = std::clamp(p, piu, static_cast<double>(catturati_ - 1));
+            const auto k = static_cast<size_t>(static_cast<int64_t>(p) % cap);
+            sl = catturaL_[k];
+            sr = catturaR_[k];
+        };
+        const float bersaglio = vuoleRoll ? 1.0f : 0.0f;
         for (int i = 0; i < n; ++i) {
-            if (--prossimoGrano_ <= 0) {
-                prossimoGrano_ = durata / 2;
-                auto libero = [](const Grano& x) { return x.durata == 0 || x.eta >= x.durata; };
-                // il posto libero, altrimenti quello più vecchio (es. grana cambiata mentre suona)
-                Grano& g = libero(grani_[0]) ? grani_[0] : libero(grani_[1]) ? grani_[1] : grani_[0].eta > grani_[1].eta ? grani_[0] : grani_[1];
-                caso_ = caso_ * 1664525u + 1013904223u;
-                const double sparpaglia = static_cast<double>(caso_ >> 8) / 16777216.0 * durata * (rapporto == 0.0f ? 1.0 : 0.25);
-                // il grano finisce dove si trova la lettura: non legge mai suono non ancora arrivato
-                g.pos = lettura_ - durata * passo - sparpaglia;
-                g.passo = passo;
-                g.eta = 0;
-                g.durata = durata;
+            float sl, sr;
+            leggi(rollPos_, sl, sr);
+            const double mancano = lunghezza - rollPos_;
+            if (mancano < incrocio_) {
+                // verso la fine del pezzo entra in dissolvenza quello che segue il giro
+                float al, ar;
+                leggi(rollPos_ - lunghezza, al, ar);
+                const float a = static_cast<float>(mancano / incrocio_);
+                sl = sl * a + al * (1.0f - a);
+                sr = sr * a + ar * (1.0f - a);
             }
-            float sl = 0.0f, sr = 0.0f;
-            for (auto& g : grani_) {
-                if (g.durata == 0 || g.eta >= g.durata) continue;
-                const float finestra = 0.5f - 0.5f * std::cos(2.0f * kPi * static_cast<float>(g.eta) / static_cast<float>(g.durata));
-                // solo suono ancora in memoria (e mai prima dell'inizio, se l'effetto parte appena aperta l'app)
-                const double p = std::max(g.pos, static_cast<double>(std::max<int64_t>(0, catturati_ - cap + 2)));
-                const auto k0 = static_cast<int64_t>(std::floor(p));
-                const float f = static_cast<float>(p - std::floor(p));
-                const auto a = static_cast<size_t>(k0 % cap), b = static_cast<size_t>((k0 + 1) % cap);
-                sl += finestra * (catturaL_[a] + (catturaL_[b] - catturaL_[a]) * f);
-                sr += finestra * (catturaR_[a] + (catturaR_[b] - catturaR_[a]) * f);
-                g.pos += g.passo;
-                ++g.eta;
-            }
-            lettura_ += rapporto;
-            // entra in fretta, esce in dissolvenza (niente stacco secco quando si alza il dito)
-            pesoStretch_ = verso(pesoStretch_, bersaglio, bersaglio > pesoStretch_ ? kRampa_ : kCodaStretch_);
-            wet_[kStretch] = verso(wet_[kStretch], w[kStretch], kRampa_);
-            const float ps = pesoStretch_ * wet_[kStretch];
-            // il suono del deck sfuma verso lo stretch (sommato alle code degli altri effetti)
-            l[i] += (sl - l[i]) * ps;
-            r[i] += (sr - r[i]) * ps;
+            rollPos_ += 1.0;
+            if (rollPos_ >= lunghezza) rollPos_ -= lunghezza;
+            pesoRoll_ = verso(pesoRoll_, bersaglio, kRampa_);
+            wet_[kRoll] = verso(wet_[kRoll], w[kRoll], kRampa_);
+            const float pr = pesoRoll_ * wet_[kRoll];
+            l[i] += (sl - l[i]) * pr;
+            r[i] += (sr - r[i]) * pr;
         }
-        if (!vuoleStretch && pesoStretch_ < 1e-4f) {
-            stretchVivo_ = false;
-            pesoStretch_ = 0.0f;
+        if (!vuoleRoll && pesoRoll_ < 1e-4f) {
+            rollVivo_ = false;
+            pesoRoll_ = 0.0f;
         }
     }
 

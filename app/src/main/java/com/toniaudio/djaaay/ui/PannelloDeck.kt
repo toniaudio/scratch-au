@@ -26,10 +26,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
 import com.toniaudio.djaaay.AZIONI_HOT_CUE
-import com.toniaudio.djaaay.AZIONI_PAD_FX
 import com.toniaudio.djaaay.AzioneMidi
 import com.toniaudio.djaaay.Controllore
-import com.toniaudio.djaaay.EFFETTI
 import com.toniaudio.djaaay.LUNGHEZZE_LOOP
 import com.toniaudio.djaaay.StatoApp
 import com.toniaudio.djaaay.etichettaLoop
@@ -76,7 +74,7 @@ fun PannelloDeck(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = Mod
                         }
                     }
                 }
-                Schede(listOf("HOT CUE", "LOOP", "FX"), deck.tabPad, { deck.tabPad = it }, Modifier.fillMaxWidth(), m.schede)
+                Schede(listOf("HOT CUE", "LOOP"), deck.tabPad, { deck.tabPad = it }, Modifier.fillMaxWidth(), m.schede)
                 Pad(app, d, c)
             }
             if (d == 0) ColonnaPitch(app, d, c)
@@ -141,7 +139,7 @@ private fun Pad(app: StatoApp, d: Int, c: Controllore) {
                     }
                 }
             }
-            1 -> {
+            else -> {
                 Assegnabile(app, c, AzioneMidi.LOOP_MEZZO, d, altezza.weight(1f)) {
                     Tasto(Modifier.fillMaxSize(), onTocco = { c.loopLunghezza(d, -1) }) { Freccia(sinistra = true) }
                 }
@@ -160,19 +158,6 @@ private fun Pad(app: StatoApp, d: Int, c: Controllore) {
                 }
                 Assegnabile(app, c, AzioneMidi.LOOP_DOPPIO, d, altezza.weight(1f)) {
                     Tasto(Modifier.fillMaxSize(), onTocco = { c.loopLunghezza(d, +1) }) { Freccia(sinistra = false) }
-                }
-            }
-            // tocco = accende/spegne quell'effetto; tenuto premuto = acceso finché non si lascia
-            else -> EFFETTI.forEachIndexed { t, e ->
-                val acceso = deck.fx.acceso && deck.fx.tipo == t
-                Assegnabile(app, c, AZIONI_PAD_FX[t], d, altezza.weight(1f)) {
-                    Tasto(
-                        Modifier.fillMaxSize(),
-                        bordo = if (acceso) Colori.Neutro else null,
-                        onTocco = { c.fxPadTocco(d, t) },
-                        onTieni = { c.fxPadTieni(d, t) },
-                        onRilascia = { c.fxPadRilascia(d) },
-                    ) { Etichetta(e.corto, if (acceso) Colori.Testo else Colori.Scuro, if (m.telefono) 11.sp else 8.sp) }
                 }
             }
         }

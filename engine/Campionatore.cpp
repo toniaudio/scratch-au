@@ -14,9 +14,9 @@ Campionatore::Campionatore() {
 }
 
 Campionatore::~Campionatore() {
-    for (auto& v : voci_) delete v.traccia;
+    for (auto& v : voci_) Traccia::rilascia(v.traccia);
     ComandoCampionatore c;
-    while (comandi_.ricevi(c)) delete c.traccia;
+    while (comandi_.ricevi(c)) Traccia::rilascia(c.traccia);
     raccogliTracceVecchie();
 }
 
@@ -31,12 +31,12 @@ void Campionatore::carica(int pad, Traccia* t) {
     c.tipo = ComandoCampionatore::Carica;
     c.pad = pad;
     c.traccia = t;
-    if (pad < 0 || pad >= kPad || !invia(c)) delete t;
+    if (pad < 0 || pad >= kPad || !invia(c)) Traccia::rilascia(t);
 }
 
 void Campionatore::raccogliTracceVecchie() {
     Traccia* t = nullptr;
-    while (daLiberare_.ricevi(t)) delete t;
+    while (daLiberare_.ricevi(t)) Traccia::rilascia(t);
 }
 
 void Campionatore::parti(Voce& v) {
@@ -54,7 +54,7 @@ void Campionatore::parti(Voce& v) {
 
 void Campionatore::applica(const ComandoCampionatore& c) {
     if (c.pad < 0 || c.pad >= kPad) {
-        delete c.traccia;
+        Traccia::rilascia(c.traccia);  // non succede: carica() controlla il pad
         return;
     }
     Voce& v = voci_[c.pad];

@@ -310,12 +310,22 @@ IngressoDvs* ingressoDvs() {
     return &i;
 }
 
-// Un brano in caricamento: si riempie a pezzi dal decodificatore Android, poi si analizza e si passa a un deck.
+// Un brano in caricamento: si riempie a pezzi dal decodificatore Android e si può già mettere in un deck (che prende
+// un suo riferimento alla traccia). L'analisi (waveform e BPM) va in parallelo, su un altro thread: legge solo i frame
+// già pubblicati. aggiungiPcm/frequenzaTraccia li chiama solo il thread che decodifica, analizza/concludi/waveform
+// solo quello che analizza (concludi dopo la fine della decodifica).
 struct Caricamento {
     djaaay::Traccia* traccia = new djaaay::Traccia();
+    std::unique_ptr<djaaay::AnalisiProgressiva> analisi;
     djaaay::Waveform waveform;
     djaaay::Tempo tempo;
-    ~Caricamento() { delete traccia; }
+    bool daCache = false;   // waveform e tempo letti dal file di analisi: niente da calcolare
+    bool concluso = false;
+    std::vector<int16_t> conversione;  // PCM float → 16 bit, riusato a ogni pezzo
+    ~Caricamento() {
+        traccia->concludi();  // se un deck la sta usando, la fine vera è dove si è arrivati
+        djaaay::Traccia::rilascia(traccia);
+    }
 };
 
 Caricamento* caricamento(jlong h) { return reinterpret_cast<Caricamento*>(h); }
@@ -373,10 +383,17 @@ JNIEXPORT jboolean JNICALL Java_com_toniaudio_djaaay_Motore_registrazioneAttiva(
 // ---------------------------------------------------------------------------------------------------------------
 // Caricamento dei brani
 
-JNIEXPORT jlong JNICALL Java_com_toniaudio_djaaay_Motore_nuovaTraccia(JNIEnv*, jobject, jint sampleRate, jlong frameAttesi) {
+JNIEXPORT jlong JNICALL Java_com_toniaudio_djaaay_Motore_nuovaTraccia(JNIEnv* env, jobject, jint sampleRate, jlong frameAttesi,
+                                                                      jstring cache) {
     auto* c = new Caricamento();
     c->traccia->sampleRate = sampleRate > 0 ? sampleRate : 44100;
     c->traccia->riserva(frameAttesi);
+    // brano già analizzato una volta: waveform e BPM pronti subito
+    const char* percorso = cache ? env->GetStringUTFChars(cache, nullptr) : nullptr;
+    if (percorso != nullptr) {
+        c->daCache = djaaay::caricaWaveform(percorso, c->waveform, c->tempo);
+        env->ReleaseStringUTFChars(cache, percorso);
+    }
     return reinterpret_cast<jlong>(c);
 }
 
@@ -387,46 +404,85 @@ JNIEXPORT jboolean JNICALL Java_com_toniaudio_djaaay_Motore_aggiungiPcm(JNIEnv* 
     auto* dati = static_cast<uint8_t*>(env->GetDirectBufferAddress(buffer));
     if (h == 0 || dati == nullptr || canali <= 0 || byte <= 0) return JNI_FALSE;
     dati += offset;
+    Caricamento* c = caricamento(h);
     if (formatoFloat == JNI_TRUE) {
         const int64_t frame = byte / (4 * canali);
         const auto* f = reinterpret_cast<const float*>(dati);
-        std::vector<int16_t> pcm(static_cast<size_t>(frame * canali));
-        for (size_t i = 0; i < pcm.size(); ++i)
-            pcm[i] = static_cast<int16_t>(std::lround(std::clamp(f[i], -1.0f, 1.0f) * 32767.0f));
-        caricamento(h)->traccia->aggiungi(pcm.data(), frame, canali);
+        c->conversione.resize(static_cast<size_t>(frame * canali));
+        for (size_t i = 0; i < c->conversione.size(); ++i)
+            c->conversione[i] = static_cast<int16_t>(std::lround(std::clamp(f[i], -1.0f, 1.0f) * 32767.0f));
+        c->traccia->aggiungi(c->conversione.data(), frame, canali);
     } else {
         const int64_t frame = byte / (2 * canali);
-        caricamento(h)->traccia->aggiungi(reinterpret_cast<const int16_t*>(dati), frame, canali);
+        c->traccia->aggiungi(reinterpret_cast<const int16_t*>(dati), frame, canali);
     }
     return JNI_TRUE;
 }
 
-// La frequenza vera si sa solo dal primo pezzo decodificato (es. AAC con SBR): si corregge qui
+// La frequenza vera si sa solo dal primo pezzo decodificato (es. AAC con SBR): si corregge qui, prima dei dati
 JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_frequenzaTraccia(JNIEnv*, jobject, jlong h, jint sampleRate) {
-    if (h != 0 && sampleRate > 0) caricamento(h)->traccia->sampleRate = sampleRate;
+    if (h == 0 || sampleRate <= 0) return;
+    djaaay::Traccia* t = caricamento(h)->traccia;
+    if (t->frame() > 0) return;
+    const double secondi = t->secondi();  // durata prevista, che non cambia
+    t->sampleRate = sampleRate;
+    t->riserva(static_cast<int64_t>(secondi * sampleRate));
 }
 
-// Waveform e tempo: dal file di analisi se c'è e vale, altrimenti calcolati e salvati. Restituisce [bpm, primo battito, secondi]
-JNIEXPORT jdoubleArray JNICALL Java_com_toniaudio_djaaay_Motore_analizza(JNIEnv* env, jobject, jlong h, jstring cache) {
+// Analizza i frame arrivati dall'ultima volta. Restituisce i secondi decodificati.
+JNIEXPORT jdouble JNICALL Java_com_toniaudio_djaaay_Motore_analizza(JNIEnv*, jobject, jlong h) {
+    if (h == 0) return 0.0;
+    Caricamento* c = caricamento(h);
+    const djaaay::Traccia& t = *c->traccia;
+    if (!c->daCache && !c->concluso && t.frame() > 0) {
+        if (!c->analisi) c->analisi = std::make_unique<djaaay::AnalisiProgressiva>(t.sampleRate);
+        c->analisi->aggiorna(t);
+    }
+    return static_cast<double>(t.frame()) / t.sampleRate;
+}
+
+// Decodifica finita: analisi completata (e salvata nel file `cache`). Restituisce [bpm, prima battuta, durata in s]
+JNIEXPORT jdoubleArray JNICALL Java_com_toniaudio_djaaay_Motore_concludi(JNIEnv* env, jobject, jlong h, jstring cache) {
     if (h == 0) return nullptr;
     Caricamento* c = caricamento(h);
-    const char* percorso = cache ? env->GetStringUTFChars(cache, nullptr) : nullptr;
-    if (percorso == nullptr || !djaaay::caricaWaveform(percorso, c->waveform, c->tempo)) {
-        c->waveform = djaaay::analizzaWaveform(*c->traccia);
-        c->tempo = djaaay::analizzaTempo(*c->traccia);
-        if (percorso != nullptr) djaaay::salvaWaveform(c->waveform, c->tempo, percorso);
+    djaaay::Traccia& t = *c->traccia;
+    t.concludi();
+    if (!c->daCache && !c->concluso) {
+        if (!c->analisi) c->analisi = std::make_unique<djaaay::AnalisiProgressiva>(t.sampleRate);
+        c->analisi->finisci(t);
+        c->waveform = c->analisi->waveform();
+        c->tempo = c->analisi->tempo();
+        c->analisi.reset();
+        const char* percorso = cache ? env->GetStringUTFChars(cache, nullptr) : nullptr;
+        if (percorso != nullptr) {
+            djaaay::salvaWaveform(c->waveform, c->tempo, percorso);
+            env->ReleaseStringUTFChars(cache, percorso);
+        }
     }
-    if (percorso != nullptr) env->ReleaseStringUTFChars(cache, percorso);
-    const jdouble valori[3] = {c->tempo.bpm, c->tempo.primoBattito, c->traccia->secondi()};
+    c->concluso = true;
+    const jdouble valori[3] = {c->tempo.bpm, c->tempo.primoBattito, t.secondi()};
     jdoubleArray r = env->NewDoubleArray(3);
     env->SetDoubleArrayRegion(r, 0, 3, valori);
     return r;
 }
 
-// Livelli della waveform per l'interfaccia: per livello [bassi…, medi…, alti…] (colonne di 64·2^livello frame)
+// Tempo già noto (dal file di analisi o dopo concludi): [bpm, prima battuta, frequenza del brano]; bpm 0 = non ancora
+JNIEXPORT jdoubleArray JNICALL Java_com_toniaudio_djaaay_Motore_tempo(JNIEnv* env, jobject, jlong h) {
+    if (h == 0) return nullptr;
+    const Caricamento* c = caricamento(h);
+    const jdouble valori[3] = {c->tempo.bpm, c->tempo.primoBattito, c->traccia->sampleRate};
+    jdoubleArray r = env->NewDoubleArray(3);
+    env->SetDoubleArrayRegion(r, 0, 3, valori);
+    return r;
+}
+
+// Livelli della waveform per l'interfaccia (fin dove è arrivata l'analisi): per livello [bassi…, medi…, alti…]
+// (colonne di 64·2^livello frame)
 JNIEXPORT jobjectArray JNICALL Java_com_toniaudio_djaaay_Motore_waveform(JNIEnv* env, jobject, jlong h) {
     if (h == 0) return nullptr;
-    const auto& livelli = caricamento(h)->waveform.livelli;
+    const Caricamento* c = caricamento(h);
+    const djaaay::Waveform parziale = c->analisi ? c->analisi->waveform() : djaaay::Waveform{};
+    const auto& livelli = c->analisi ? parziale.livelli : c->waveform.livelli;
     jobjectArray r = env->NewObjectArray(static_cast<jsize>(livelli.size()), env->FindClass("[B"), nullptr);
     for (size_t i = 0; i < livelli.size(); ++i) {
         const auto& l = livelli[i];
@@ -441,17 +497,16 @@ JNIEXPORT jobjectArray JNICALL Java_com_toniaudio_djaaay_Motore_waveform(JNIEnv*
     return r;
 }
 
-// Il brano passa al deck (che ne diventa proprietario); il caricamento sparisce
+// Il brano va nel deck (anche mentre si decodifica ancora: il deck prende un suo riferimento)
 JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_caricaNelDeck(JNIEnv*, jobject, jlong h, jint deck) {
-    if (h == 0) return;
-    Caricamento* c = caricamento(h);
-    if (deck >= 0 && deck < 2 && c->traccia->frame() > 0) {
-        uscita()->motore.deck[deck].carica(c->traccia);
-        c->traccia = nullptr;
-    }
-    delete c;
+    if (h == 0 || deck < 0 || deck > 1) return;
+    djaaay::Traccia* t = caricamento(h)->traccia;
+    if (t->frame() == 0) return;
+    t->trattieni();
+    uscita()->motore.deck[deck].carica(t);
 }
 
+// Fine del caricamento (finito, annullato o fallito): si lascia la traccia a chi la usa
 JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_scartaTraccia(JNIEnv*, jobject, jlong h) {
     delete caricamento(h);
 }
@@ -556,7 +611,7 @@ JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_statoDvs(JNIEnv* env, jo
     env->SetFloatArrayRegion(dest, 0, 8 + 2 * kPunti, v);
 }
 
-// Effetti del deck: 0 acceso (0/1), 1 tipo (0 echo, 1 dub, 2 reverb, 3 stretch), 6 secondi per battito;
+// Effetti del deck: 0 acceso (0/1), 1 tipo (0 echo, 1 dub, 2 reverb, 3 roll), 6 secondi per battito;
 // per tipo `t`: 2 dry/wet, 3 parametro 1, 4 parametro 2, 5 scelta della riga in basso (indice)
 JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaFx(JNIEnv*, jobject, jint deck, jint parametro, jint t, jfloat v) {
     if (deck < 0 || deck > 1 || t < 0 || t > 3) return;
@@ -628,15 +683,14 @@ JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_campionatore(JNIEnv*, jo
     c.invia(k);
 }
 
-// Un brano caricato e analizzato va in un pad del campionatore (che ne diventa proprietario)
+// Un brano caricato va in un pad del campionatore (che prende un suo riferimento)
 JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_caricaNelCampionatore(JNIEnv*, jobject, jlong h, jint pad) {
     if (h == 0) return;
-    Caricamento* c = caricamento(h);
-    if (c->traccia->frame() > 0) {
-        uscita()->motore.campionatore.carica(pad, c->traccia);
-        c->traccia = nullptr;
+    djaaay::Traccia* t = caricamento(h)->traccia;
+    if (t->frame() > 0) {
+        t->trattieni();
+        uscita()->motore.campionatore.carica(pad, t);
     }
-    delete c;
 }
 
 }  // extern "C"

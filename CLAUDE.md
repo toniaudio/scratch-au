@@ -47,9 +47,10 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
   arco: sinistra LP, destra HP, centro spento). **Volumi al centro** ai lati del MASTER (manopola + meter), REC.
 - **Crossfader corto**, lettere A/B ai lati, sotto SOLO il simbolo della curva (taglio ⊓, lineare ×, morbida) in grigio,
   stile scritte EQ; tocco = cambia curva. Inverti (hamster) nelle Opzioni / MIDI.
-- **FX**: un'unità per deck (FX · DECK A, FX · DECK B) con ON, scelta tra **ECHO, DUB DELAY, REVERB, STRETCH**,
-  manopole DRY/WET + parametri, riga tempo (battute) o rapporto (stretch ½× ¼× ⅛× FREEZE).
-  Pad FX del deck: tocco = on/off, tenere premuto = momentaneo. Keylock è separato (tasto KEY).
+- **FX**: un'unità per deck (FX · DECK A, FX · DECK B) nella sezione FX: scelta tra **ECHO, DUB DELAY, REVERB, ROLL**,
+  solo **trackpad** (niente manopole né ON): dito giù = suona, su = svanisce con la coda; secondo dito = HOLD.
+  X = dry/wet, Y = parametro principale; riga tempo (battute) / coda / verso (roll avanti-indietro).
+  Niente FX nei deck (29/10: pad del deck solo HOT CUE · LOOP). Valori comandabili da MIDI. Keylock è separato (tasto KEY).
 - **Libreria per deck**: il pulsante libreria di un deck apre la libreria DENTRO lo spazio di quel deck (sotto le waveform,
   senza coprire il mixer). Ricerca, tab Tutti / Cartelle / Playlist / Recenti, BPM e durata; tocco su un brano = caricato
   in quel deck. Il brano già caricato è in grigio.
@@ -140,6 +141,18 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
   dissolvenze 2/8 ms), pannello al posto del deck B, libreria per i pad, MODIFICA (menu: cambia suono, modo, togli),
   STOP; suoni e modi salvati ("campionatore") e ricaricati dopo la lettura della libreria. MIDI: CUFFIA, MIX/VOLUME
   CUFFIE, CAMPIONE_1…8.
+- **Revisione 29/10** (richieste dell'utente dopo la prova):
+  - Caricamento progressivo: `Traccia` a blocchi da 64k frame con conteggio atomico e riferimenti (`trattieni`/
+    `rilascia`): il deck suona già dal primo secondo decodificato, la decodifica continua (codec sempre pieno, niente
+    attese da 10 ms) e un altro thread fa l'analisi (`AnalisiProgressiva`: waveform + attacchi in un passaggio a metà
+    frequenza; BPM alla fine). Waveform che cresce, sottile barra di avanzamento; con il file di analisi in cache
+    waveform e BPM sono pronti subito. Il deck non si ferma dove la decodifica è arrivata (`lunghezza()` = prevista
+    finché non è `completa`). TSan pulito.
+  - Barra alta 44 dp sul telefono; testi senza "carattere grande" di Android (fontScale ≤ 1); schermata fuori dal foro
+    della fotocamera; tasti libreria lontani dagli angoli arrotondati (`Display.getRoundedCorner`).
+  - STRETCH tolto → **ROLL** (ripete 1/16…1 battito dal momento in cui si accende; Y = lunghezza a 5 fasce, riga
+    AVANTI/INDIETRO, dissolvenza 4 ms al giro). MIDI: FX_ON/FX_ECHO…FX_ROLL suonano finché premuti, FX_HOLD.
+  - Doppio tocco: volumi a 0 dB (in alto), pitch al centro, crossfader al centro (due tocchi brevi e fermi).
 - iOS valutato (28/10): fattibile (motore C++ riusabile, UI con Compose Multiplatform), ma con Apple ID gratuito la
   firma scade ogni 7 giorni (o 99 €/anno). L'utente ha deciso: **per ora resta solo Android**.
 - Prossimo: prova vera dell'utente (MIDI con l'X-Session, DVS con scheda USB), poi pre-ascolto in cuffia

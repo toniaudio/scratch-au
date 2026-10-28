@@ -8,7 +8,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** Un brano della libreria del telefono. */
@@ -59,7 +58,8 @@ val EFFETTI = listOf(
     DescrizioneFx("ECHO", "ECHO", listOf("FEEDBACK"), "TEMPO (BATTUTE)", listOf("1/8", "1/4", "1/2", "1", "2"), listOf(0, 1, 2, 4, 5), 1),
     DescrizioneFx("DUB DELAY", "DUB", listOf("FEEDBACK", "TONO"), "TEMPO (BATTUTE)", listOf("1/4", "1/2", "3/4", "1", "2"), listOf(1, 2, 3, 4, 5), 1),
     DescrizioneFx("REVERB", "VERB", listOf("STANZA", "DAMP"), "CODA", listOf("corta", "media", "lunga"), listOf(0, 1, 2), 1),
-    DescrizioneFx("STRETCH", "STRETCH", listOf("GRANA", "TONO"), "RALLENTA · TONO FISSO", listOf("½×", "¼×", "⅛×", "FREEZE"), listOf(0, 1, 2, 3), 2),
+    // ROLL: l'asse Y sceglie quanto si ripete (1/16 … 1 battito), la riga il verso
+    DescrizioneFx("ROLL", "ROLL", listOf("LUNGHEZZA"), "VERSO", listOf("AVANTI", "INDIETRO"), listOf(0, 1), 1),
 )
 
 /** Testo sotto una manopola dell'effetto: `quale` 0 = DRY/WET, 1 e 2 = parametri. */
@@ -69,23 +69,23 @@ fun testoFx(tipo: Int, quale: Int, v: Float): String {
     return when (tipo to quale) {
         1 to 2 -> if (v < 0.35f) "scuro" else if (v > 0.65f) "brillante" else "medio"
         2 to 1 -> if (v < 0.35f) "piccola" else if (v > 0.65f) "grande" else "media"
-        3 to 1 -> "${(10 + 110 * v).roundToInt()} ms"
-        3 to 2 -> if (abs(v - 0.5f) < 0.03f) "fisso" else "%+d st".format(((v - 0.5f) * 24).roundToInt())
+        3 to 1 -> LUNGHEZZE_ROLL[(v * LUNGHEZZE_ROLL.size).toInt().coerceIn(0, LUNGHEZZE_ROLL.size - 1)]
         else -> percento
     }
 }
 
-/** Effetti di un deck. Ogni tipo ricorda le sue regolazioni (indice 0 echo, 1 dub, 2 reverb, 3 stretch). */
+/** Lunghezze del ROLL in battiti, come kBattitiRoll in engine/Effetti.h. */
+val LUNGHEZZE_ROLL = listOf("1/16", "1/8", "1/4", "1/2", "1")
+
+/** Effetti di un deck. Ogni tipo ricorda le sue regolazioni (indice 0 echo, 1 dub, 2 reverb, 3 roll). */
 class StatoFx {
     var acceso by mutableStateOf(false)
     var tipo by mutableIntStateOf(0)
     val dryWet = mutableStateListOf(0.35f, 0.45f, 0.30f, 1.0f)
-    val param1 = mutableStateListOf(0.4f, 0.7f, 0.7f, 0.3f)
-    val param2 = mutableStateListOf(0f, 0.2f, 0.5f, 0.5f)
+    val param1 = mutableStateListOf(0.4f, 0.7f, 0.7f, 0.5f)
+    val param2 = mutableStateListOf(0f, 0.2f, 0.5f, 0f)
     val scelta = mutableStateListOf(1, 3, 2, 0)  // indice nel motore (vedi DescrizioneFx.indici)
-    var momentaneo = false  // acceso tenendo premuto il pad: si spegne al rilascio
-    var padAperto by mutableStateOf(false)  // trackpad al posto delle manopole
-    var hold by mutableStateOf(false)       // trackpad bloccato (secondo dito): resta acceso finché non si ritocca
+    var hold by mutableStateOf(false)       // bloccato (secondo dito o tasto MIDI): resta acceso finché non si ritocca
     var toccato by mutableStateOf(false)    // un dito sul trackpad
     var spegniAlRilascio = false
 }
@@ -116,7 +116,7 @@ class StatoDeck(val indice: Int) {
     var loopAttivo by mutableStateOf(false)
     var loopInizio by mutableDoubleStateOf(0.0)
     var loopIndice by mutableIntStateOf(5)  // 4 battute
-    var tabPad by mutableIntStateOf(0)  // 0 hot cue, 1 loop, 2 fx
+    var tabPad by mutableIntStateOf(0)  // 0 hot cue, 1 loop
     var libreriaAperta by mutableStateOf(false)
     var libCerca by mutableStateOf("")
     var libScheda by mutableIntStateOf(0)  // 0 tutti, 1 cartelle, 2 playlist, 3 recenti

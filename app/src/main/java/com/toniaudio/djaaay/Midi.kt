@@ -30,15 +30,16 @@ enum class AzioneMidi(val nome: String, val perDeck: Boolean, val continuo: Bool
     LOOP("Loop on/off", true, false),
     LOOP_MEZZO("Loop ◀ (dimezza)", true, false),
     LOOP_DOPPIO("Loop ▶ (raddoppia)", true, false),
-    FX_ON("FX on/off", true, false),
+    FX_ON("FX (suona finché premuto)", true, false),
+    FX_HOLD("FX hold", true, false),
     FX_SUCCESSIVO("FX: effetto successivo", true, false),
-    FX_ECHO("Pad FX Echo", true, false),
-    FX_DUB("Pad FX Dub", true, false),
-    FX_REVERB("Pad FX Reverb", true, false),
-    FX_STRETCH("Pad FX Stretch", true, false),
-    FX_DRY_WET("FX dry/wet", true, true),
-    FX_PARAM1("FX manopola 1", true, true),
-    FX_PARAM2("FX manopola 2", true, true),
+    FX_ECHO("FX Echo (finché premuto)", true, false),
+    FX_DUB("FX Dub (finché premuto)", true, false),
+    FX_REVERB("FX Reverb (finché premuto)", true, false),
+    FX_ROLL("FX Roll (finché premuto)", true, false),
+    FX_DRY_WET("FX dry/wet (asse X)", true, true),
+    FX_PARAM1("FX parametro 1", true, true),
+    FX_PARAM2("FX parametro 2", true, true),
     LIB_APRI("Libreria apri/chiudi", true, false),
     LIB_SU("Libreria su", true, false),
     LIB_GIU("Libreria giù", true, false),
@@ -63,7 +64,7 @@ val AZIONI_CAMPIONE = listOf(
 )
 
 val AZIONI_HOT_CUE = listOf(AzioneMidi.HOT_CUE_1, AzioneMidi.HOT_CUE_2, AzioneMidi.HOT_CUE_3, AzioneMidi.HOT_CUE_4)
-val AZIONI_PAD_FX = listOf(AzioneMidi.FX_ECHO, AzioneMidi.FX_DUB, AzioneMidi.FX_REVERB, AzioneMidi.FX_STRETCH)
+val AZIONI_PAD_FX = listOf(AzioneMidi.FX_ECHO, AzioneMidi.FX_DUB, AzioneMidi.FX_REVERB, AzioneMidi.FX_ROLL)
 
 /** Un controllo del controller: CC o nota, su un canale (0…15). */
 data class SorgenteMidi(val nota: Boolean, val canale: Int, val numero: Int) {

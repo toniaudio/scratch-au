@@ -267,12 +267,12 @@ static void testRevisione() {
         Traccia t;
         std::vector<int16_t> pezzo(4096 * 2, 1000);
         for (int i = 0; i < 3229; ++i) t.aggiungi(pezzo.data(), 4096, 2);  // 5 minuti
-        verifica(t.frame() == 3229LL * 4096 && t.pcm.capacity() < t.pcm.size() * 2 + 16,
-                 "caricamento a pezzi: dimensione giusta, memoria non sprecata");
+        verifica(t.frame() == 3229LL * 4096 && t.campione(3229LL * 4096 - 1, 1) > 0.03f && t.campione(3229LL * 4096, 0) == 0.0f,
+                 "caricamento a pezzi: dimensione giusta");
         Traccia mono;
         const int16_t m3[3] = {1, 2, 3};
         mono.aggiungi(m3, 3, 1);
-        verifica(mono.frame() == 3 && mono.pcm[2] == 2 && mono.pcm[3] == 2, "un file mono diventa stereo");
+        verifica(mono.frame() == 3 && mono.campione(1, 0) == 2.0f / 32768.0f && mono.campione(1, 1) == 2.0f / 32768.0f, "un file mono diventa stereo");
     }
 }
 
@@ -498,6 +498,80 @@ static Traccia* colpi(double secondi, double sr = 48000.0) {
     }
     t->aggiungi(buf.data(), n, 2);
     return t;
+}
+
+// Caricamento progressivo: il deck suona mentre il brano arriva a pezzi, l'analisi a pezzi è identica a quella in un colpo
+static void testCaricamentoProgressivo() {
+    Traccia* intero = sinusoide(220.0, 12.0);
+    const int64_t n = intero->frame();
+    std::vector<int16_t> pcm(static_cast<size_t>(n) * 2);
+    for (int64_t i = 0; i < n; ++i)
+        for (int c = 0; c < 2; ++c) pcm[static_cast<size_t>(i * 2 + c)] = static_cast<int16_t>(std::lround(intero->campione(i, c) * 32768.0f));
+
+    auto* t = new Traccia();
+    t->riserva(n);
+    AnalisiProgressiva a(t->sampleRate);
+    int64_t fatti = 0;
+    const int64_t pezzo = 44100 / 2 + 37;  // pezzi "storti", non multipli delle colonne
+    auto aggiungi = [&](int64_t quanti) {
+        quanti = std::min(quanti, n - fatti);
+        t->aggiungi(pcm.data() + fatti * 2, quanti, 2);
+        fatti += quanti;
+        a.aggiorna(*t);
+    };
+    aggiungi(pezzo);
+
+    Motore m;
+    m.prepara(48000.0);
+    Deck& d = m.deck[0];
+    t->trattieni();  // il deck ha il suo riferimento, il caricamento il suo
+    d.carica(t);
+    m.mixer.crossfader = 0.0f;
+    gira(m, 0.02);
+    verifica(vicino(d.durataSecondi(), 12.0, 0.01), "caricamento progressivo: durata prevista già dall'inizio");
+    d.invia(cmd(ComandoDeck::Play, 1.0));
+    // la decodifica va più veloce della puntina: un pezzo ogni 0,1 s
+    float piccoOltre = 0.0f;
+    while (fatti < n) {
+        gira(m, 0.1);
+        aggiungi(pezzo);
+    }
+    gira(m, 2.0);
+    verifica(d.inPlay() && d.posizioneSecondi() > 3.0, "caricamento progressivo: il deck suona e avanza mentre il brano arriva");
+    // salto oltre il punto decodificato: silenzio ma il deck non si ferma
+    auto* t2 = new Traccia();
+    t2->riserva(n);
+    t2->aggiungi(pcm.data(), 44100, 2);
+    Motore m2;
+    m2.prepara(48000.0);
+    m2.mixer.crossfader = 0.0f;
+    t2->trattieni();
+    m2.deck[0].carica(t2);
+    gira(m2, 0.02);
+    m2.deck[0].invia(cmd(ComandoDeck::Play, 1.0));
+    gira(m2, 0.3);
+    m2.deck[0].invia(cmd(ComandoDeck::Vai, 5.0));
+    gira(m2, 0.1);
+    piccoOltre = gira(m2, 0.5).picco;
+    verifica(m2.deck[0].inPlay() && piccoOltre < 1e-3f, "oltre la parte decodificata: silenzio, il deck non si ferma");
+    t2->concludi();
+    gira(m2, 0.1);
+    verifica(!m2.deck[0].inPlay(), "decodifica finita prima: la fine vera del brano ferma il deck");
+    Traccia::rilascia(t2);
+
+    a.finisci(*t);
+    t->concludi();
+    const Waveform w1 = a.waveform();
+    const Waveform w2 = analizzaWaveform(*intero);
+    bool uguali = w1.livelli.size() == w2.livelli.size();
+    for (size_t k = 0; uguali && k < w1.livelli.size(); ++k)
+        uguali = w1.livelli[k].bassi == w2.livelli[k].bassi && w1.livelli[k].medi == w2.livelli[k].medi &&
+                 w1.livelli[k].alti == w2.livelli[k].alti;
+    verifica(uguali, "analisi a pezzi: waveform identica a quella in un colpo");
+    Traccia::rilascia(t);  // il deck ha ancora il suo: la traccia resta viva
+    gira(m, 0.1);
+    verifica(d.inPlay() || d.posizioneSecondi() > 0.0, "il deck continua a usare la traccia dopo il rilascio del caricamento");
+    delete intero;
 }
 
 static void testKeylock() {
@@ -879,59 +953,77 @@ static void testEffetti() {
         const float a = piccoTra(y, 0.15, 0.35, sr), b = piccoTra(y, 2.5, 3.0, sr);
         verifica(tuttiFiniti(y) && a > 1e-3f && b < a * 0.1f, "reverb: coda che si spegne");
     }
-    {  // STRETCH ½×: stesso tono (440 Hz), suono continuo
+    {  // ROLL avanti: dal momento in cui si accende si ripete 1/4 di battito (120 BPM → 0,125 s), poi si torna al deck
         Effetto e;
         e.prepara(sr);
-        e.tipo = kStretch;
-        e.scelta[kStretch] = 0;
-        e.dryWet[kStretch] = 1.0f;
-        e.acceso = true;
+        e.tipo = kRoll;
+        e.secondiBattito = 0.5f;
+        e.param1[kRoll] = 0.5f;  // indice 2 = 1/4
+        e.dryWet[kRoll] = 1.0f;
         std::vector<float> in(static_cast<size_t>(3 * sr));
-        for (size_t i = 0; i < in.size(); ++i) in[i] = 0.4f * static_cast<float>(std::sin(2.0 * M_PI * 440.0 * i / sr));
-        const auto y = passaEffetto(e, in, [](size_t) {});
-        std::vector<float> coda(y.begin() + static_cast<long>(1.5 * sr), y.end()), stereo;
-        for (float v : coda) {
-            stereo.push_back(v);
-            stereo.push_back(v);
+        uint32_t x = 7;
+        for (auto& v : in) {
+            x = x * 1664525u + 1013904223u;
+            v = 0.4f * (static_cast<float>(x >> 8) / 8388608.0f - 1.0f);  // rumore: ogni pezzo è diverso
         }
-        const double f = frequenza(stereo, sr);
-        verifica(tuttiFiniti(y) && std::fabs(f - 440.0) < 8.0, "stretch ½×: stesso tono");
-        verifica(piccoTra(y, 1.5, 3.0, sr) > 0.15f, "stretch ½×: suona");
+        const size_t inizio = static_cast<size_t>(sr), fine = static_cast<size_t>(2 * sr);
+        const size_t lung = static_cast<size_t>(0.125 * sr);
+        verifica(indiceRoll(0.5f) == 2 && indiceRoll(0.0f) == 0 && indiceRoll(1.0f) == kNumRoll - 1, "roll: asse Y → lunghezze 1/16…1");
+        const auto y = passaEffetto(e, in, [&](size_t i) { e.acceso = i >= inizio && i < fine; });
+        float errore = 0.0f;
+        for (size_t t = inizio + 2 * lung; t < fine - lung; ++t) {
+            const size_t dentro = (t - inizio) % lung;
+            if (dentro < 300 || dentro > lung - 300) continue;  // dissolvenza al giro
+            errore = std::max(errore, std::fabs(y[t] - in[inizio + dentro]));
+        }
+        verifica(tuttiFiniti(y) && errore < 1e-3f, "roll avanti: si ripete il pezzo partito quando lo si accende");
+        float primoGiro = 0.0f;
+        for (size_t t = inizio; t < inizio + lung - 300; ++t) primoGiro = std::max(primoGiro, std::fabs(y[t] - in[t]));
+        verifica(primoGiro < 1e-3f, "roll avanti: il primo giro è il suono del deck (si entra senza salti)");
+        float dopo = 0.0f;
+        for (size_t t = fine + static_cast<size_t>(0.15 * sr); t < y.size(); ++t) dopo = std::max(dopo, std::fabs(y[t] - in[t]));
+        verifica(dopo < 1e-3f, "roll spento: torna il deck");
     }
-    {  // STRETCH ⅛× con TONO +12: un'ottava sopra; tenuto 15 s (oltre la memoria di 12 s) senza problemi
+    {  // ROLL indietro: il pezzo appena prima, al contrario
         Effetto e;
         e.prepara(sr);
-        e.tipo = kStretch;
-        e.scelta[kStretch] = 2;
-        e.param2[kStretch] = 1.0f;
-        e.dryWet[kStretch] = 1.0f;
-        e.acceso = true;
-        std::vector<float> in(static_cast<size_t>(15 * sr));
-        for (size_t i = 0; i < in.size(); ++i) in[i] = 0.4f * static_cast<float>(std::sin(2.0 * M_PI * 300.0 * i / sr));
-        const auto y = passaEffetto(e, in, [](size_t) {});
-        std::vector<float> stereo;
-        for (size_t i = static_cast<size_t>(13 * sr); i < y.size(); ++i) {
-            stereo.push_back(y[i]);
-            stereo.push_back(y[i]);
+        e.tipo = kRoll;
+        e.secondiBattito = 0.5f;
+        e.param1[kRoll] = 0.5f;
+        e.scelta[kRoll] = 1;
+        e.dryWet[kRoll] = 1.0f;
+        std::vector<float> in(static_cast<size_t>(2 * sr));
+        uint32_t x = 11;
+        for (auto& v : in) {
+            x = x * 1664525u + 1013904223u;
+            v = 0.4f * (static_cast<float>(x >> 8) / 8388608.0f - 1.0f);
         }
-        verifica(tuttiFiniti(y) && std::fabs(frequenza(stereo, sr) - 600.0) < 12.0, "stretch ⅛× tono +12: un'ottava sopra, anche dopo 15 s");
+        const size_t inizio = static_cast<size_t>(sr), lung = static_cast<size_t>(0.125 * sr);
+        const auto y = passaEffetto(e, in, [&](size_t i) { e.acceso = i >= inizio; });
+        float errore = 0.0f;
+        for (size_t t = inizio + 2 * lung; t < inizio + 6 * lung; ++t) {
+            const size_t dentro = (t - inizio) % lung;
+            if (dentro < 300 || dentro > lung - 300) continue;
+            errore = std::max(errore, std::fabs(y[t] - in[inizio - 1 - dentro]));
+        }
+        verifica(tuttiFiniti(y) && errore < 1e-3f, "roll indietro: il pezzo prima, al contrario");
     }
-    {  // FREEZE: dopo un secondo il deck tace, ma il suono resta congelato
+    {  // ROLL su un tono: nessun click al giro, anche cambiando lunghezza mentre gira
         Effetto e;
         e.prepara(sr);
-        e.tipo = kStretch;
-        e.scelta[kStretch] = 3;
-        e.dryWet[kStretch] = 1.0f;
-        std::vector<float> in(static_cast<size_t>(3 * sr), 0.0f);
-        for (size_t i = 0; i < static_cast<size_t>(1.0 * sr); ++i)
-            in[i] = 0.4f * static_cast<float>(std::sin(2.0 * M_PI * 330.0 * i / sr));
-        const auto y = passaEffetto(e, in, [&](size_t i) { if (i >= static_cast<size_t>(0.5 * sr)) e.acceso = true; });
-        verifica(tuttiFiniti(y) && piccoTra(y, 2.0, 3.0, sr) > 0.05f, "freeze: il suono resta anche col deck muto");
-        e.acceso = false;
-        std::vector<float> silenzio(static_cast<size_t>(1.5 * sr), 0.0f);
-        const auto z = passaEffetto(e, silenzio, [](size_t) {});
-        verifica(piccoTra(z, 0.0, 0.1, sr) > 0.05f, "freeze spento: sfuma (non si stacca di colpo)");
-        verifica(piccoTra(z, 1.0, 1.5, sr) < 1e-3f, "freeze spento: poi torna il deck (muto)");
+        e.tipo = kRoll;
+        e.secondiBattito = 0.47f;
+        e.param1[kRoll] = 0.3f;
+        e.dryWet[kRoll] = 1.0f;
+        std::vector<float> in(static_cast<size_t>(4 * sr));
+        for (size_t i = 0; i < in.size(); ++i) in[i] = 0.4f * static_cast<float>(std::sin(2.0 * M_PI * 441.0 * i / sr));
+        const auto y = passaEffetto(e, in, [&](size_t i) {
+            e.acceso = i >= static_cast<size_t>(0.5 * sr) && i < static_cast<size_t>(3.5 * sr);
+            e.param1[kRoll] = i < static_cast<size_t>(2 * sr) ? 0.3f : 0.9f;
+        });
+        float salto = 0.0f;
+        for (size_t i = 1; i < y.size(); ++i) salto = std::max(salto, std::fabs(y[i] - y[i - 1]));
+        verifica(tuttiFiniti(y) && salto < 0.05f, "roll: niente click al giro né cambiando lunghezza");
     }
 }
 
@@ -1280,6 +1372,7 @@ int main() {
     testAntiAliasing();
     testMixer();
     testWaveform();
+    testCaricamentoProgressivo();
     testBpm();
     testKeylock();
     testCacheWaveform();

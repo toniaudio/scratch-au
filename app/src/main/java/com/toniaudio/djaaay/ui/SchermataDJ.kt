@@ -4,6 +4,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,10 +44,17 @@ import kotlinx.coroutines.delay
  */
 @Composable
 fun SchermataDJ(app: StatoApp, c: Controllore) {
-    BoxWithConstraints(Modifier.fillMaxSize().background(Colori.Sfondo)) {
-        val telefono = maxHeight < 500.dp
-        CompositionLocalProvider(LocalMisure provides if (telefono) MISURE_GRANDI else MISURE_NORMALI) {
-            Corpo(app, c, telefono)
+    // Il "carattere grande" delle impostazioni di Android farebbe uscire le scritte dai loro riquadri (sono misurati al
+    // millimetro): qui i testi restano alla dimensione normale. Il foro della fotocamera resta fuori dalla schermata.
+    val densita = LocalDensity.current
+    CompositionLocalProvider(LocalDensity provides Density(densita.density, minOf(densita.fontScale, 1f))) {
+        BoxWithConstraints(
+            Modifier.fillMaxSize().background(Colori.Sfondo).windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)),
+        ) {
+            val telefono = maxHeight < 500.dp
+            CompositionLocalProvider(LocalMisure provides if (telefono) MISURE_GRANDI else MISURE_NORMALI) {
+                Corpo(app, c, telefono)
+            }
         }
     }
 }

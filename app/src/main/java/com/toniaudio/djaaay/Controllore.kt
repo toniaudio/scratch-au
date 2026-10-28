@@ -6,13 +6,18 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.floor
 
-/** Brano decodificato e analizzato, pronto per un deck (handle nativo). */
+/**
+ * Un brano in caricamento (handle nativo). Si può mettere nel deck già al primo aggiornamento: la decodifica
+ * continua mentre suona e la waveform cresce; con `finito` ci sono anche il BPM (se non era già noto) e la durata vera.
+ */
 class BranoCaricato(
     val handle: Long,
-    val bpm: Double,
+    val bpm: Double,  // 0 = non ancora noto (o brano senza ritmo)
     val primoBattito: Double,
     val durata: Double,
-    val waveform: Waveform,
+    val waveform: Waveform?,
+    val progresso: Float = 1f,  // parte già decodificata
+    val finito: Boolean = true,
 )
 
 /** Le cose che dipendono da Android (in app: PiattaformaAndroid; nei test: una finta). */
@@ -20,9 +25,12 @@ interface Piattaforma {
     fun haPermessoLibreria(): Boolean
     fun chiediPermessoLibreria()
     suspend fun leggiLibreria(): List<Brano>
-    suspend fun carica(brano: Brano, progresso: (Float) -> Unit): BranoCaricato
+    /**
+     * Decodifica il brano: [aggiorna] arriva sul thread dell'interfaccia appena l'inizio si può suonare, poi ogni
+     * tanto, l'ultima volta con finito = true. Al ritorno l'handle non vale più (deck e pad tengono il loro brano).
+     */
+    suspend fun carica(brano: Brano, aggiorna: (BranoCaricato) -> Unit)
     fun mettiNelDeck(caricato: BranoCaricato, deck: Int)
-    fun scarta(caricato: BranoCaricato)
     fun avviaRec(): String?
     fun fermaRec()
     fun impostaBuffer(multiplo: Int)
@@ -215,12 +223,9 @@ class Controllore(
     fun fxAcceso(d: Int, acceso: Boolean) {
         val fx = stato.deck[d].fx
         fx.acceso = acceso
-        fx.momentaneo = false
         if (!acceso) fx.hold = false
         ponte.impostaFx(d, ParFx.ACCESO, fx.tipo, if (acceso) 1f else 0f)
     }
-
-    fun fxOnOff(d: Int) = fxAcceso(d, !stato.deck[d].fx.acceso)
 
     fun fxTipo(d: Int, tipo: Int) {
         val fx = stato.deck[d].fx
@@ -228,7 +233,7 @@ class Controllore(
         ponte.impostaFx(d, ParFx.TIPO, fx.tipo, fx.tipo.toFloat())
     }
 
-    /** Manopole dell'effetto scelto: `quale` 0 = DRY/WET, 1 e 2 = parametri. */
+    /** Valori dell'effetto scelto (trackpad e MIDI): `quale` 0 = DRY/WET, 1 e 2 = parametri. */
     fun fxManopola(d: Int, quale: Int, valore: Float) {
         val fx = stato.deck[d].fx
         val v = valore.coerceIn(0f, 1f)
@@ -240,7 +245,7 @@ class Controllore(
         }
     }
 
-    /** Riga in basso (tempo, coda, rapporto): `voce` = posizione nella riga. */
+    /** Riga in basso (tempo, coda, verso): `voce` = posizione nella riga. */
     fun fxScelta(d: Int, voce: Int) {
         val fx = stato.deck[d].fx
         val indici = EFFETTI[fx.tipo].indici
@@ -249,41 +254,14 @@ class Controllore(
         ponte.impostaFx(d, ParFx.SCELTA, fx.tipo, indice.toFloat())
     }
 
-    /** Pad FX del deck: tocco = accende quell'effetto (o lo spegne se è già acceso). */
-    fun fxPadTocco(d: Int, tipo: Int) {
-        val fx = stato.deck[d].fx
-        if (fx.acceso && fx.tipo == tipo) return fxAcceso(d, false)
-        fxTipo(d, tipo)
-        fxAcceso(d, true)
-    }
-
-    /** Pad tenuto premuto: effetto acceso finché non si lascia. */
-    fun fxPadTieni(d: Int, tipo: Int) {
-        fxTipo(d, tipo)
-        fxAcceso(d, true)
-        stato.deck[d].fx.momentaneo = true
-    }
-
-    fun fxPadRilascia(d: Int) {
-        if (stato.deck[d].fx.momentaneo) fxAcceso(d, false)
-    }
-
-    /** Tasto PAD dell'unità FX: trackpad al posto delle manopole (o di nuovo le manopole). */
-    fun fxPad(d: Int) {
-        val fx = stato.deck[d].fx
-        fx.padAperto = !fx.padAperto
-    }
-
     /**
-     * Trackpad: X = dry/wet, Y = il parametro principale dell'effetto. Il dito appoggiato accende l'effetto,
-     * staccandolo l'effetto svanisce con la sua coda. Se era già acceso (dal pad FX del deck) resta acceso.
+     * L'effetto suona solo finché è premuto (trackpad o tasto MIDI): premuto = acceso, lasciato = svanisce con la
+     * sua coda. Se è bloccato (HOLD), il tocco dopo lo libera e lasciando svanisce.
      */
-    fun fxTrackpadGiu(d: Int, x: Float, y: Float) {
+    fun fxPremi(d: Int) {
         val fx = stato.deck[d].fx
-        fx.toccato = true
         when {
             fx.hold -> {
-                // bloccato: questo tocco lo libera, e alzando il dito svanisce
                 fx.hold = false
                 fx.spegniAlRilascio = true
             }
@@ -291,9 +269,32 @@ class Controllore(
                 fxAcceso(d, true)
                 fx.spegniAlRilascio = true
             }
-            else -> fx.spegniAlRilascio = false
         }
+    }
+
+    fun fxLascia(d: Int) {
+        val fx = stato.deck[d].fx
+        if (!fx.hold && fx.spegniAlRilascio) fxAcceso(d, false)
+        fx.spegniAlRilascio = false
+    }
+
+    /** HOLD: l'effetto acceso resta acceso anche lasciando (secondo dito sul trackpad, o tasto MIDI). */
+    fun fxTieni(d: Int) {
+        val fx = stato.deck[d].fx
+        if (fx.acceso) fx.hold = true
+    }
+
+    /** Tasto MIDI "FX hold": blocca l'effetto che sta suonando, o spegne quello bloccato. */
+    fun fxHoldMidi(d: Int) {
+        val fx = stato.deck[d].fx
+        if (fx.hold) fxAcceso(d, false) else fxTieni(d)
+    }
+
+    /** Trackpad: X = dry/wet, Y = il parametro principale dell'effetto. Dito giù = suona, su = svanisce. */
+    fun fxTrackpadGiu(d: Int, x: Float, y: Float) {
+        stato.deck[d].fx.toccato = true
         fxTrackpadSposta(d, x, y)
+        fxPremi(d)
     }
 
     fun fxTrackpadSposta(d: Int, x: Float, y: Float) {
@@ -302,17 +303,12 @@ class Controllore(
         fxManopola(d, EFFETTI[fx.tipo].asseY, y)
     }
 
-    /** Un secondo dito sul trackpad: l'effetto resta acceso anche staccando le dita. */
-    fun fxTrackpadTieni(d: Int) {
-        val fx = stato.deck[d].fx
-        if (fx.acceso) fx.hold = true
-    }
+    /** Un secondo dito sul trackpad: HOLD. */
+    fun fxTrackpadTieni(d: Int) = fxTieni(d)
 
     fun fxTrackpadSu(d: Int) {
-        val fx = stato.deck[d].fx
-        fx.toccato = false
-        if (!fx.hold && fx.spegniAlRilascio) fxAcceso(d, false)
-        fx.spegniAlRilascio = false
+        stato.deck[d].fx.toccato = false
+        fxLascia(d)
     }
 
     /** Manda al motore tutte le regolazioni degli effetti (all'avvio). */
@@ -426,25 +422,31 @@ class Controllore(
         deck.libreriaAperta = false
         deck.caricamento = 0f
         caricamenti[d] = scope.launch {
-            val caricato = try {
-                piattaforma.carica(brano) { deck.caricamento = it }
+            var nelDeck = false
+            try {
+                piattaforma.carica(brano) { c ->
+                    if (!nelDeck) {
+                        // l'inizio è pronto: il brano va subito nel deck, il resto arriva mentre suona
+                        nelDeck = true
+                        piattaforma.mettiNelDeck(c, d)
+                        deck.brano = brano
+                        deck.posizione = 0.0
+                        deck.hotCue.indices.forEach { deck.hotCue[it] = null }
+                        deck.loopAttivo = false
+                    }
+                    deck.waveform = c.waveform
+                    deck.bpm = c.bpm
+                    deck.primoBattito = c.primoBattito
+                    deck.durata = c.durata
+                    deck.caricamento = if (c.finito) null else c.progresso
+                    if (c.finito) ricordaBrano(brano, c.bpm)
+                }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 deck.caricamento = null
-                return@launch mostra("Non riesco a leggere \"${brano.titolo}\" (${e.message ?: "formato non supportato"})")
+                mostra("Non riesco a leggere \"${brano.titolo}\" (${e.message ?: "formato non supportato"})")
             }
-            piattaforma.mettiNelDeck(caricato, d)
-            deck.brano = brano
-            deck.waveform = caricato.waveform
-            deck.bpm = caricato.bpm
-            deck.primoBattito = caricato.primoBattito
-            deck.durata = caricato.durata
-            deck.posizione = 0.0
-            deck.hotCue.indices.forEach { deck.hotCue[it] = null }
-            deck.loopAttivo = false
-            deck.caricamento = null
-            ricordaBrano(brano, caricato.bpm)
         }
     }
 
@@ -526,6 +528,14 @@ class Controllore(
             AzioneMidi.FX_PARAM2 -> fxManopola(d, 2, v)
             AzioneMidi.MIX_CUFFIE -> mixCuffie(v)
             AzioneMidi.VOLUME_CUFFIE -> volumeCuffie(v)
+            // FX: suona finché il tasto è premuto (come il trackpad); i tasti degli effetti scelgono anche l'effetto
+            AzioneMidi.FX_ON -> if (pressione) fxPremi(d) else if (!premuto && eraPremuto) fxLascia(d)
+            in AZIONI_PAD_FX -> if (pressione) {
+                fxTipo(d, AZIONI_PAD_FX.indexOf(a.azione))
+                fxPremi(d)
+            } else if (!premuto && eraPremuto) {
+                fxLascia(d)
+            }
             in AZIONI_CAMPIONE -> {
                 val pad = AZIONI_CAMPIONE.indexOf(a.azione)
                 if (pressione) padCampione(pad) else if (!premuto && eraPremuto) padCampioneRilascia(pad)
@@ -545,12 +555,8 @@ class Controllore(
                 AzioneMidi.LOOP -> loopTocco(d)
                 AzioneMidi.LOOP_MEZZO -> loopLunghezza(d, -1)
                 AzioneMidi.LOOP_DOPPIO -> loopLunghezza(d, +1)
-                AzioneMidi.FX_ON -> fxOnOff(d)
                 AzioneMidi.FX_SUCCESSIVO -> fxTipo(d, (stato.deck[d].fx.tipo + 1) % EFFETTI.size)
-                AzioneMidi.FX_ECHO -> fxPadTocco(d, 0)
-                AzioneMidi.FX_DUB -> fxPadTocco(d, 1)
-                AzioneMidi.FX_REVERB -> fxPadTocco(d, 2)
-                AzioneMidi.FX_STRETCH -> fxPadTocco(d, 3)
+                AzioneMidi.FX_HOLD -> fxHoldMidi(d)
                 AzioneMidi.LIB_APRI -> apriLibreria(d)
                 AzioneMidi.LIB_SU -> libreriaSposta(d, -1)
                 AzioneMidi.LIB_GIU -> libreriaSposta(d, +1)
@@ -956,20 +962,25 @@ class Controllore(
         stato.campionatore.scegliPer = null
         pad.caricamento = 0f
         scope.launch {
-            val caricato = try {
-                piattaforma.carica(brano) { pad.caricamento = it }
+            try {
+                // il pad suona solo il brano intero
+                piattaforma.carica(brano) { c ->
+                    pad.caricamento = c.progresso
+                    if (c.finito) {
+                        piattaforma.mettiNelCampionatore(c, i)
+                        ponte.campionatore(CmdCampione.MODO, i, pad.modo)
+                        pad.brano = brano
+                        pad.bpm = c.bpm
+                        pad.caricamento = null
+                        salvaCampionatore()
+                    }
+                }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 pad.caricamento = null
-                return@launch mostra("Non riesco a leggere \"${brano.titolo}\" (${e.message ?: "formato non supportato"})")
+                mostra("Non riesco a leggere \"${brano.titolo}\" (${e.message ?: "formato non supportato"})")
             }
-            piattaforma.mettiNelCampionatore(caricato, i)
-            ponte.campionatore(CmdCampione.MODO, i, pad.modo)
-            pad.brano = brano
-            pad.bpm = caricato.bpm
-            pad.caricamento = null
-            salvaCampionatore()
         }
     }
 
