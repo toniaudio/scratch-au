@@ -100,37 +100,24 @@ private fun UnitaFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier, g
                 }
             }
         }
-        // manopole: DRY/WET grande, poi i parametri dell'effetto (restano anche col trackpad aperto)
-        val manopole = @Composable { dw: Int, par: Int ->
-            Assegnabile(app, c, AzioneMidi.FX_DRY_WET, d) {
-                ManopolaFx(fx.dryWet[t], "DRY/WET", testoFx(t, 0, fx.dryWet[t]), dw, grande) { c.fxManopola(d, 0, it) }
-            }
-            descr.parametri.forEachIndexed { k, nome ->
-                val valore = if (k == 0) fx.param1[t] else fx.param2[t]
-                Assegnabile(app, c, if (k == 0) AzioneMidi.FX_PARAM1 else AzioneMidi.FX_PARAM2, d) {
-                    ManopolaFx(valore, nome, testoFx(t, k + 1, valore), par, grande) { c.fxManopola(d, k + 1, it) }
-                }
-            }
-        }
-        when {
-            !fx.padAperto -> {
-                Spacer(Modifier.weight(1f))
+        if (fx.padAperto) {
+            // trackpad da solo: niente manopole (la riga sotto resta)
+            TrackpadFx(app, d, c, Modifier.weight(1f).fillMaxWidth(), grande)
+        } else {
+            // manopole: DRY/WET grande, poi i parametri dell'effetto. Stanno nello spazio che c'è: su uno schermo
+            // più basso del previsto la riga sotto non viene mai spinta fuori
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) {
-                    manopole(if (grande) 46 else 24, if (grande) 38 else 18)
+                    Assegnabile(app, c, AzioneMidi.FX_DRY_WET, d) {
+                        ManopolaFx(fx.dryWet[t], "DRY/WET", testoFx(t, 0, fx.dryWet[t]), if (grande) 46 else 24, grande) { c.fxManopola(d, 0, it) }
+                    }
+                    descr.parametri.forEachIndexed { k, nome ->
+                        val valore = if (k == 0) fx.param1[t] else fx.param2[t]
+                        Assegnabile(app, c, if (k == 0) AzioneMidi.FX_PARAM1 else AzioneMidi.FX_PARAM2, d) {
+                            ManopolaFx(valore, nome, testoFx(t, k + 1, valore), if (grande) 38 else 18, grande) { c.fxManopola(d, k + 1, it) }
+                        }
+                    }
                 }
-                Spacer(Modifier.weight(if (grande) 0.4f else 0.01f))
-            }
-            grande -> {
-                // telefono: trackpad a sinistra, manopole a destra
-                Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TrackpadFx(app, d, c, Modifier.weight(1f).fillMaxHeight(), grande)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.Bottom) { manopole(36, 30) }
-                }
-            }
-            else -> {
-                // tablet (unità stretta): trackpad sopra, manopole piccole sotto
-                TrackpadFx(app, d, c, Modifier.weight(1f).fillMaxWidth(), grande)
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) { manopole(20, 16) }
             }
         }
         Etichetta(descr.titoloRiga, Colori.Spento, if (grande) 10.sp else 6.5.sp)
@@ -149,7 +136,7 @@ private fun UnitaFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier, g
 }
 
 /**
- * Trackpad dell'effetto (senza scritte: i valori si leggono sulle manopole accanto): X = dry/wet, Y = il parametro principale. Un dito appoggiato suona l'effetto finché resta
+ * Trackpad dell'effetto (senza scritte): X = dry/wet, Y = il parametro principale. Un dito appoggiato suona l'effetto finché resta
  * giù (staccandolo svanisce con la sua coda); un secondo dito lo blocca (HOLD); il tocco dopo lo fa svanire.
  */
 @Composable
