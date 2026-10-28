@@ -76,7 +76,7 @@ class SchermateTest {
     @Test fun tablet() = foto("0-tablet") { s, c ->
         s.mixer.tab = 1
         c.fxTipo(0, 1)
-        c.fxTrackpadGiu(0, 0.5f, 0.6f)  // DUB DELAY sul deck A, dito appoggiato
+        c.fxTrackpadGiu(0, 1, 0.5f, 0.6f)  // DUB DELAY sul deck A, dito appoggiato
     }
 
     @Test fun libreriaDeckA() = foto("2-libreria-deck-a") { s, _ -> s.deck[0].libreriaAperta = true }
@@ -92,19 +92,20 @@ class SchermateTest {
         c.fxTipo(0, 1)  // DUB DELAY scelto sul deck A, spento
         // deck B: REVERB bloccato (HOLD), poi ROLL col tono in su bloccato anche lui: suonano insieme
         c.fxTipo(1, 2)
-        c.fxTrackpadGiu(1, 0.4f, 0.6f)
-        c.fxTrackpadTieni(1)
-        c.fxTrackpadSu(1)
+        c.fxTrackpadGiu(1, 2, 0.4f, 0.6f)
+        c.fxTrackpadTieni(1, 2)
+        c.fxTrackpadSu(1, 2)
         c.fxTipo(1, 3)
-        c.fxTrackpadGiu(1, 0.7f, 0.8f)
-        c.fxTrackpadTieni(1)
-        c.fxTrackpadSu(1)
+        c.fxTrackpadGiu(1, 3, 0.7f, 0.8f)
+        c.fxTrackpadTieni(1, 3)
+        c.fxTrackpadSu(1, 3)
     }
 
     @Test fun fxTrackpad() = foto("6b-fx-trackpad") { s, c ->
         s.vista = 3
+        c.fxTrackpadGiu(0, 0, 0.45f, 0.6f)  // deck A: due dita su ECHO e ROLL insieme
+        c.fxTrackpadGiu(0, 3, 0.8f, 0.3f)
         c.fxTipo(1, 2)
-        c.fxTrackpadGiu(0, 0.45f, 0.6f)  // dito ancora appoggiato sul deck A
     }
 
     @Test fun midiLearn() = foto("8-midi-learn") { s, c ->

@@ -290,28 +290,28 @@ class Controllore(
         if (fx.hold) fxAcceso(d, false) else fxTieni(d)
     }
 
-    /** Trackpad: X = dry/wet, Y = il parametro principale dell'effetto scelto. Dito giù = suona, su = svanisce. */
-    fun fxTrackpadGiu(d: Int, x: Float, y: Float) {
-        val fx = stato.deck[d].fx
-        fx.toccato = true
-        fx.tipoTrackpad = fx.tipo
-        fxTrackpadSposta(d, x, y)
-        fxPremi(d, fx.tipoTrackpad)
+    /**
+     * Trackpad dell'effetto `t` (ogni effetto ha il suo, si possono usare insieme): X = dry/wet, Y = il parametro
+     * principale. Dito giù = suona (e la riga in basso mostra le sue regolazioni), su = svanisce.
+     */
+    fun fxTrackpadGiu(d: Int, t: Int, x: Float, y: Float) {
+        stato.deck[d].fx.toccati[t] = true
+        fxTipo(d, t)
+        fxTrackpadSposta(d, t, x, y)
+        fxPremi(d, t)
     }
 
-    fun fxTrackpadSposta(d: Int, x: Float, y: Float) {
-        val t = stato.deck[d].fx.tipoTrackpad  // l'effetto che il dito sta suonando
+    fun fxTrackpadSposta(d: Int, t: Int, x: Float, y: Float) {
         fxManopola(d, 0, x, t)
         fxManopola(d, EFFETTI[t].asseY, y, t)
     }
 
-    /** Un secondo dito sul trackpad: HOLD dell'effetto che il dito sta suonando. */
-    fun fxTrackpadTieni(d: Int) = fxTieni(d, stato.deck[d].fx.tipoTrackpad)
+    /** Un secondo dito sullo stesso trackpad: HOLD di quell'effetto. */
+    fun fxTrackpadTieni(d: Int, t: Int) = fxTieni(d, t)
 
-    fun fxTrackpadSu(d: Int) {
-        val fx = stato.deck[d].fx
-        fx.toccato = false
-        fxLascia(d, fx.tipoTrackpad)
+    fun fxTrackpadSu(d: Int, t: Int) {
+        stato.deck[d].fx.toccati[t] = false
+        fxLascia(d, t)
     }
 
     /** Manda al motore tutte le regolazioni degli effetti (all'avvio). */

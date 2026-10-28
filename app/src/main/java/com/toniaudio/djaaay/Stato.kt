@@ -90,7 +90,8 @@ fun semitoniRoll(y: Float): Float {
 
 /**
  * Effetti di un deck (indice 0 echo, 1 dub, 2 reverb, 3 roll). Ognuno è indipendente: si accende, si blocca (HOLD)
- * e ricorda le sue regolazioni per conto suo, e possono suonare insieme. `tipo` è quello che comanda il trackpad.
+ * e ricorda le sue regolazioni per conto suo, e possono suonare insieme (un trackpad per effetto). `tipo` è l'ultimo
+ * toccato: la riga in basso mostra le sue regolazioni e i comandi MIDI "FX" e "FX parametro" vanno a lui.
  */
 class StatoFx {
     var tipo by mutableIntStateOf(0)
@@ -100,9 +101,8 @@ class StatoFx {
     val param1 = mutableStateListOf(0.4f, 0.7f, 0.7f, 0.5f)
     val param2 = mutableStateListOf(0f, 0.2f, 0.5f, 0f)
     val scelta = mutableStateListOf(1, 3, 2, 2)  // indice nel motore (vedi DescrizioneFx.indici)
-    var toccato by mutableStateOf(false)    // un dito sul trackpad
+    val toccati = mutableStateListOf(false, false, false, false)  // un dito sul trackpad dell'effetto
     val spegniAlRilascio = BooleanArray(4)  // acceso da questa pressione: lasciando si spegne
-    var tipoTrackpad = 0                    // effetto acceso dal dito sul trackpad (resta quello anche cambiando)
     var tipoMidi = 0                        // effetto acceso dal tasto MIDI "FX"
 
     /** L'effetto scelto suona / è bloccato. */

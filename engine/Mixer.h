@@ -11,12 +11,14 @@
 namespace djaaay {
 
 enum CurvaCrossfader : int {
-    kCurvaTaglio = 0,   // da scratch: pieno su quasi tutta la corsa, taglio netto agli estremi
+    kCurvaTaglio = 0,   // da scratch: muto solo all'estremo opposto, appena ci si sposta è a volume pieno
     kCurvaLineare = 1,
     kCurvaMorbida = 2,  // potenza costante
 };
 
-constexpr float kZonaTaglio = 0.04f;  // frazione della corsa dove il crossfader "taglio" apre il canale
+// Crossfader "taglio": il canale è muto solo con il crossfader proprio in fondo dalla parte opposta (meno di un passo
+// MIDI, 1/127, dal fondo); appena si sposta suona pieno. Il passaggio dura ~1 ms (smoothing del mixer): niente click.
+constexpr float kFondoTaglio = 0.002f;
 
 struct Guadagni {
     float a;

@@ -165,14 +165,18 @@ void Effetto::pezzo(float* l, float* r, int n) {
         return std::clamp(static_cast<double>(kBattute[bi] * battito), 0.005, kMaxRitardo) * sr_;
     };
 
-    // Il deck viene sempre registrato negli ultimi secondi: il ROLL parte da "adesso"
+    // Il deck viene registrato negli ultimi secondi: il ROLL ripete il pezzo appena prima di quando lo si accende.
+    // Mentre il roll suona la registrazione si ferma poco dopo il punto di partenza (le voci che sfumano leggono
+    // qualche ms oltre): altrimenti, tenendolo a lungo, il suono nuovo sovrascriverebbe il pezzo che si ripete.
     const auto cap = static_cast<int64_t>(catturaL_.size());
-    for (int i = 0; i < n; ++i) {
-        const auto k = static_cast<size_t>((catturati_ + i) % cap);
-        catturaL_[k] = l[i];
-        catturaR_[k] = r[i];
+    if (!rollVivo_ || catturati_ < rollAncora_ + static_cast<int64_t>(0.1 * sr_)) {
+        for (int i = 0; i < n; ++i) {
+            const auto k = static_cast<size_t>((catturati_ + i) % cap);
+            catturaL_[k] = l[i];
+            catturaR_[k] = r[i];
+        }
+        catturati_ += n;
     }
-    catturati_ += n;
 
     // --- ROLL (prima degli altri effetti: l'eco ripete il roll). Si ripete il pezzo appena prima di quando lo si
     // accende (INDIETRO: al contrario), ripartendo a tempo ogni `lunghezza`. Il tono cambia la velocità di lettura

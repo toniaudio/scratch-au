@@ -350,7 +350,10 @@ static void testMixer() {
                  vicino(guadagniCrossfader(0.5f, kCurvaTaglio, false).b, 1.0, 1e-6),
              "taglio: al centro entrambi pieni");
     verifica(vicino(guadagniCrossfader(0.0f, kCurvaTaglio, false).b, 0.0, 1e-6), "taglio: tutto a sinistra B muto");
-    verifica(vicino(guadagniCrossfader(0.03f, kCurvaTaglio, false).b, 0.75, 1e-3), "taglio: B apre entro il 4%");
+    verifica(guadagniCrossfader(1.0f / 127.0f, kCurvaTaglio, false).b == 1.0f &&
+                 guadagniCrossfader(126.0f / 127.0f, kCurvaTaglio, false).a == 1.0f &&
+                 guadagniCrossfader(1.0f, kCurvaTaglio, false).a == 0.0f,
+             "taglio: muto solo in fondo, un passo MIDI dopo è a volume pieno");
     verifica(vicino(guadagniCrossfader(0.0f, kCurvaTaglio, true).a, 0.0, 1e-6), "inverti scambia i lati");
     const Guadagni g = guadagniCrossfader(0.5f, kCurvaMorbida, false);
     verifica(vicino(g.a * g.a + g.b * g.b, 1.0, 1e-5), "morbida: potenza costante");
@@ -980,6 +983,31 @@ static void testEffetti() {
         float dopo = 0.0f;
         for (size_t t = fine + static_cast<size_t>(0.15 * sr); t < y.size(); ++t) dopo = std::max(dopo, std::fabs(y[t] - in[t]));
         verifica(dopo < 1e-3f, "roll spento: torna il deck");
+    }
+    {  // ROLL tenuto a lungo (25 s, oltre la memoria di 10 s): ripete sempre lo stesso pezzo, pulito; poi si riparte
+        Effetto e;
+        e.prepara(sr);
+        e.secondiBattito = 0.5f;
+        e.scelta[kRoll] = 2;
+        e.dryWet[kRoll] = 1.0f;
+        const auto in = rumore(40.0, 13);
+        const size_t inizio = static_cast<size_t>(sr), fine = static_cast<size_t>(26 * sr), lung = static_cast<size_t>(0.125 * sr);
+        const size_t secondo = static_cast<size_t>(30 * sr);
+        const auto y = passaEffetto(e, in, [&](size_t i) { e.acceso[kRoll] = (i >= inizio && i < fine) || i >= secondo; });
+        float errore = 0.0f;
+        for (size_t t = fine - static_cast<size_t>(3 * sr); t < fine - lung; ++t) {
+            const size_t dentro = (t - inizio) % lung;
+            if (dentro < 600) continue;
+            errore = std::max(errore, std::fabs(y[t] - in[inizio - lung + dentro]));
+        }
+        verifica(tuttiFiniti(y) && errore < 1e-3f, "roll tenuto 25 s: ripete sempre il pezzo giusto (niente sgranature)");
+        float nuovo = 0.0f;
+        for (size_t t = secondo + lung; t < secondo + 4 * lung; ++t) {
+            const size_t dentro = (t - secondo) % lung;
+            if (dentro < 600) continue;
+            nuovo = std::max(nuovo, std::fabs(y[t] - in[secondo - lung + dentro]));
+        }
+        verifica(nuovo < 1e-3f, "roll riacceso dopo: ripete il pezzo nuovo");
     }
     {  // ROLL al contrario (parametro 2, da MIDI)
         Effetto e;

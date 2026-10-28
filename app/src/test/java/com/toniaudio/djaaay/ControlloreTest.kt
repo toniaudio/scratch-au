@@ -156,32 +156,37 @@ class ControlloreTest {
         val fx = stato.deck[0].fx
         // ECHO bloccato con il secondo dito
         c.fxTipo(0, 0)
-        c.fxTrackpadGiu(0, 0.5f, 0.5f)
-        c.fxTrackpadTieni(0)
-        c.fxTrackpadSu(0)
+        c.fxTrackpadGiu(0, 0, 0.5f, 0.5f)
+        c.fxTrackpadTieni(0, 0)
+        c.fxTrackpadSu(0, 0)
         // si passa al ROLL: l'echo resta acceso e bloccato
         c.fxTipo(0, 3)
         assertTrue(fx.accesi[0])
         assertTrue(fx.tenuti[0])
-        c.fxTrackpadGiu(0, 0.8f, 0.9f)
+        c.fxTrackpadGiu(0, 3, 0.8f, 0.9f)
         assertTrue(fx.accesi[3])
         assertEquals(1f, ponte.fx[Triple(0, ParFx.ACCESO, 0)])
         assertEquals(1f, ponte.fx[Triple(0, ParFx.ACCESO, 3)])
         assertEquals(0.9f, fx.param1[3])  // il dito comanda solo il roll
         assertEquals(0.5f, fx.param1[0])
-        c.fxTrackpadSu(0)
+        c.fxTrackpadSu(0, 3)
         assertEquals(false, fx.accesi[3])
         assertTrue(fx.accesi[0])
-        // dito giù sul roll e cambio effetto mentre è giù: lasciando si spegne il roll, non l'altro
-        c.fxTrackpadGiu(0, 0.5f, 0.5f)
-        c.fxTipo(0, 2)
-        c.fxTrackpadSu(0)
+        // due dita su due trackpad (roll e reverb) insieme: ognuno si spegne quando si alza il suo dito
+        c.fxTrackpadGiu(0, 3, 0.5f, 0.5f)
+        c.fxTrackpadGiu(0, 2, 0.5f, 0.5f)
+        assertTrue(fx.accesi[2] && fx.accesi[3])
+        assertEquals(2, fx.tipo)  // la riga in basso segue l'ultimo toccato
+        c.fxTrackpadSu(0, 3)
         assertEquals(false, fx.accesi[3])
+        assertTrue(fx.accesi[2])
+        c.fxTrackpadSu(0, 2)
+        assertEquals(false, fx.accesi[2])
         assertTrue(fx.accesi[0])
         // un tocco sull'echo lo sblocca e lasciando svanisce
         c.fxTipo(0, 0)
-        c.fxTrackpadGiu(0, 0.5f, 0.5f)
-        c.fxTrackpadSu(0)
+        c.fxTrackpadGiu(0, 0, 0.5f, 0.5f)
+        c.fxTrackpadSu(0, 0)
         assertEquals(false, fx.accesi[0])
         assertEquals(0f, ponte.fx[Triple(0, ParFx.ACCESO, 0)])
     }
@@ -373,32 +378,32 @@ class ControlloreTest {
     @Test
     fun trackpadFxToccoHoldERitocco() {
         c.fxTipo(0, 1)  // DUB DELAY: Y = feedback
-        c.fxTrackpadGiu(0, 0.3f, 0.8f)
+        c.fxTrackpadGiu(0, 1, 0.3f, 0.8f)
         assertTrue(stato.deck[0].fx.acceso)
         assertEquals(0.3f, stato.deck[0].fx.dryWet[1])
         assertEquals(0.8f, stato.deck[0].fx.param1[1])
-        c.fxTrackpadSposta(0, 0.6f, 0.2f)
+        c.fxTrackpadSposta(0, 1, 0.6f, 0.2f)
         assertEquals(0.6f, ponte.fx[Triple(0, ParFx.DRY_WET, 1)])
-        c.fxTrackpadSu(0)  // dito alzato: si spegne (il motore lascia la coda)
+        c.fxTrackpadSu(0, 1)  // dito alzato: si spegne (il motore lascia la coda)
         assertEquals(false, stato.deck[0].fx.acceso)
         // hold: secondo dito, poi si alzano tutte e due
-        c.fxTrackpadGiu(0, 0.5f, 0.5f)
-        c.fxTrackpadTieni(0)
-        c.fxTrackpadSu(0)
+        c.fxTrackpadGiu(0, 1, 0.5f, 0.5f)
+        c.fxTrackpadTieni(0, 1)
+        c.fxTrackpadSu(0, 1)
         assertTrue(stato.deck[0].fx.acceso)
         assertTrue(stato.deck[0].fx.hold)
         // ritocco: al rilascio svanisce
-        c.fxTrackpadGiu(0, 0.5f, 0.5f)
+        c.fxTrackpadGiu(0, 1, 0.5f, 0.5f)
         assertEquals(false, stato.deck[0].fx.hold)
         assertTrue(stato.deck[0].fx.acceso)
-        c.fxTrackpadSu(0)
+        c.fxTrackpadSu(0, 1)
         assertEquals(false, stato.deck[0].fx.acceso)
         // ROLL: Y = lunghezza
         c.fxTipo(0, 3)
-        c.fxTrackpadGiu(0, 1f, 0.95f)
+        c.fxTrackpadGiu(0, 3, 1f, 0.95f)
         assertEquals(0.95f, stato.deck[0].fx.param1[3])
         assertTrue(stato.deck[0].fx.acceso)
-        c.fxTrackpadSu(0)
+        c.fxTrackpadSu(0, 3)
         assertEquals(false, stato.deck[0].fx.acceso)
     }
 

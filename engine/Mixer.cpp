@@ -14,7 +14,7 @@ Guadagni guadagniCrossfader(float x, int curva, bool inverti) {
         case kCurvaMorbida:
             return {std::cos(x * kPi * 0.5f), std::sin(x * kPi * 0.5f)};
         default:
-            return {std::clamp((1.0f - x) / kZonaTaglio, 0.0f, 1.0f), std::clamp(x / kZonaTaglio, 0.0f, 1.0f)};
+            return {x >= 1.0f - kFondoTaglio ? 0.0f : 1.0f, x <= kFondoTaglio ? 0.0f : 1.0f};
     }
 }
 

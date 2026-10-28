@@ -45,13 +45,15 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
   insieme: ogni deck con DVS acceso segue il timecode, con DVS spento si usa normalmente (touch/MIDI). Scelta manuale.
 - Mixer (al centro, tab MIXER / FX): per canale GAIN (manopola piccola e sottile), HI/MID/LOW, FILTRO (manopola grande con
   arco: sinistra LP, destra HP, centro spento). **Volumi al centro** ai lati del MASTER (manopola + meter), REC.
-- **Crossfader corto**, lettere A/B ai lati, sotto SOLO il simbolo della curva (taglio ⊓, lineare ×, morbida) in grigio,
+- **Crossfader corto** (curva taglio = netta: canale muto solo col crossfader in fondo dall'altra parte, appena si
+  sposta di un passo è pieno; ~1 ms anti-click), lettere A/B ai lati, sotto SOLO il simbolo della curva (taglio ⊓, lineare ×, morbida) in grigio,
   stile scritte EQ; tocco = cambia curva. Inverti (hamster) nelle Opzioni / MIDI.
 - **FX**: un'unità per deck (FX · DECK A, FX · DECK B) nella sezione FX: scelta tra **ECHO, DUB DELAY, REVERB, ROLL**,
   solo **trackpad** (niente manopole né ON): dito giù = suona, su = svanisce con la coda; secondo dito = HOLD.
   X = dry/wet, Y = parametro principale (roll: TONO, centro normale, ±12 st); riga tempo / coda / lunghezza del roll.
-  **Effetti indipendenti** (richiesta 28/10): ognuno ha acceso e HOLD suoi, possono suonare insieme; cambiare effetto
-  non tocca gli altri (pulsante pieno = suona, punto verde = HOLD, bordo/lineetta = quello del trackpad).
+  **Effetti indipendenti** (richiesta 28/10): ognuno ha acceso e HOLD suoi, possono suonare insieme. **4 trackpad per
+  deck** sempre presenti (telefono: in fila; tablet: 2×2), un dito per effetto; sopra ognuno il nome (pieno = suona,
+  punto verde = HOLD, tocco = sue regolazioni nella riga in basso, che segue l'ultimo effetto toccato).
   Niente FX nei deck (29/10: pad del deck solo HOT CUE · LOOP). Valori comandabili da MIDI. Keylock è separato (tasto KEY).
 - **Libreria per deck**: il pulsante libreria di un deck apre la libreria DENTRO lo spazio di quel deck (sotto le waveform,
   senza coprire il mixer). Ricerca, tab Tutti / Cartelle / Playlist / Recenti, BPM e durata; tocco su un brano = caricato
@@ -159,6 +161,8 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
     "sgranato"): ripete il pezzo appena prima a tempo, Y = tono (lettura più veloce/lenta col ritmo che resta: in su
     il pezzo si ripete più volte nel giro), riga = lunghezza 1/16…1, al contrario solo da MIDI (parametro 2);
     ogni salto è una dissolvenza a potenza costante tra voci (fino a 3 che sfumano, mai uno stacco).
+  - Roll "sgranato dopo un po'": la registrazione (10 s) sovrascriveva il pezzo; ora si ferma mentre il roll suona
+    (test: roll tenuto 25 s). 4 trackpad per deck. Crossfader taglio netto (`kFondoTaglio`).
 - iOS valutato (28/10): fattibile (motore C++ riusabile, UI con Compose Multiplatform), ma con Apple ID gratuito la
   firma scade ogni 7 giorni (o 99 €/anno). L'utente ha deciso: **per ora resta solo Android**.
 - Prossimo: prova vera dell'utente (MIDI con l'X-Session, DVS con scheda USB), poi pre-ascolto in cuffia

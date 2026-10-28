@@ -48,8 +48,9 @@ fun PannelloFx(app: StatoApp, c: Controllore, modifier: Modifier = Modifier, gra
 }
 
 /**
- * Unità effetti di un deck: scelta dell'effetto, trackpad (l'effetto suona solo mentre il dito è sopra; un secondo
- * dito lo blocca), riga del tempo / della coda / del verso. I valori si possono comandare anche da MIDI.
+ * Unità effetti di un deck: i quattro effetti sempre presenti, ognuno col suo trackpad (si possono usare insieme,
+ * un dito per effetto): dito giù = suona, su = svanisce, secondo dito sullo stesso trackpad = HOLD. Sopra ogni
+ * trackpad il nome (pieno = suona, punto verde = HOLD; tocco = mostra le sue regolazioni nella riga in basso).
  */
 @Composable
 private fun UnitaFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier, grande: Boolean) {
@@ -57,7 +58,8 @@ private fun UnitaFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier, g
     val t = fx.tipo
     val descr = EFFETTI[t]
     val forma = RoundedCornerShape(if (grande) 14.dp else 9.dp)
-    val alto = if (grande) 30.dp else 17.dp
+    val alto = if (grande) 26.dp else 15.dp
+    val spazio = if (grande) 6.dp else 3.dp
     Column(
         modifier
             .background(if (grande) Colori.Pannello else Color.Transparent, forma)
@@ -70,48 +72,23 @@ private fun UnitaFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier, g
             if (d == 1 && app.opzioni.unDeck) "FX · CAMPIONATORE" else "FX · DECK ${app.deck[d].lettera}",
             Colori.Testo, if (grande) 12.sp else 8.5.sp, Modifier.fillMaxWidth(),
         )
-        // scelta dell'effetto (quello che comanda il trackpad, bordato); pieno = suona, punto verde = bloccato (HOLD).
-        // Gli effetti sono indipendenti: possono suonare in più insieme
+        // telefono: 4 in fila; tablet (colonna stretta): 2 × 2
         val righe = if (grande) listOf(listOf(0, 1, 2, 3)) else listOf(listOf(0, 1), listOf(2, 3))
-        for (riga in righe) {
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (grande) 6.dp else 3.dp)) {
-                for (i in riga) {
-                    val scelto = i == t
-                    val suona = fx.accesi[i]
-                    Assegnabile(app, c, AZIONI_PAD_FX[i], d, Modifier.weight(1f).height(alto)) {
-                        Tasto(
-                            Modifier.fillMaxSize(),
-                            acceso = suona,
-                            bordo = if (scelto && !suona) Colori.Neutro else null,
-                            onTocco = { c.fxTipo(d, i) },
-                        ) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                Etichetta(
-                                    EFFETTI[i].nome,
-                                    if (suona) Colori.Sfondo else if (scelto) Colori.Testo else Colori.Spento,
-                                    if (grande) 11.5.sp else 7.sp,
-                                )
-                                if (scelto && suona) {
-                                    // scelto e acceso: una lineetta sotto il nome (con più effetti accesi si vede quale comanda il trackpad)
-                                    Canvas(Modifier.align(Alignment.BottomCenter).padding(bottom = if (grande) 4.dp else 2.dp).fillMaxWidth(0.35f).height(2.dp)) {
-                                        drawRect(Colori.Sfondo)
-                                    }
-                                }
-                                if (fx.tenuti[i]) {
-                                    Canvas(Modifier.align(Alignment.CenterEnd).padding(end = if (grande) 8.dp else 4.dp).size(if (grande) 7.dp else 4.dp)) {
-                                        drawCircle(Colori.Verde)
-                                    }
-                                }
+        Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(spazio)) {
+            for (riga in righe) {
+                Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(spazio)) {
+                    for (i in riga) {
+                        Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(spazio)) {
+                            NomeFx(fx, i, i == t, alto, grande) { c.fxTipo(d, i) }
+                            Assegnabile(app, c, AZIONI_PAD_FX[i], d, Modifier.weight(1f).fillMaxWidth()) {
+                                TrackpadFx(app, d, i, c, Modifier.fillMaxSize(), grande)
                             }
                         }
                     }
                 }
             }
         }
-        Assegnabile(app, c, AzioneMidi.FX_ON, d, Modifier.weight(1f).fillMaxWidth()) {
-            TrackpadFx(app, d, c, Modifier.fillMaxSize(), grande)
-        }
-        Etichetta(descr.titoloRiga, Colori.Spento, if (grande) 10.sp else 6.5.sp)
+        Etichetta("${descr.nome} · ${descr.titoloRiga}", Colori.Spento, if (grande) 10.sp else 6.5.sp)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (grande) 6.dp else 2.dp)) {
             descr.voci.forEachIndexed { k, voce ->
                 val scelta = descr.indici[k] == fx.scelta[t]
@@ -126,14 +103,38 @@ private fun UnitaFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier, g
     }
 }
 
+/** Nome dell'effetto sopra il suo trackpad: pieno = suona, bordato = le sue regolazioni sono nella riga, punto verde = HOLD. */
+@Composable
+private fun NomeFx(fx: com.toniaudio.djaaay.StatoFx, i: Int, scelto: Boolean, alto: androidx.compose.ui.unit.Dp, grande: Boolean, onTocco: () -> Unit) {
+    val suona = fx.accesi[i]
+    Tasto(
+        Modifier.fillMaxWidth().height(alto),
+        acceso = suona,
+        bordo = if (scelto && !suona) Colori.Neutro else null,
+        onTocco = onTocco,
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Etichetta(
+                if (grande) EFFETTI[i].nome else EFFETTI[i].corto,
+                if (suona) Colori.Sfondo else if (scelto) Colori.Testo else Colori.Spento,
+                if (grande) 11.sp else 7.sp,
+            )
+            if (fx.tenuti[i]) {
+                Canvas(Modifier.align(Alignment.CenterEnd).padding(end = if (grande) 6.dp else 3.dp).size(if (grande) 7.dp else 4.dp)) {
+                    drawCircle(Colori.Verde)
+                }
+            }
+        }
+    }
+}
+
 /**
  * Trackpad dell'effetto (senza scritte): X = dry/wet, Y = il parametro principale. Un dito appoggiato suona l'effetto finché resta
  * giù (staccandolo svanisce con la sua coda); un secondo dito lo blocca (HOLD); il tocco dopo lo fa svanire.
  */
 @Composable
-private fun TrackpadFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier, grande: Boolean) {
+private fun TrackpadFx(app: StatoApp, d: Int, t: Int, c: Controllore, modifier: Modifier, grande: Boolean) {
     val fx = app.deck[d].fx
-    val t = fx.tipo
     val descr = EFFETTI[t]
     val x = fx.dryWet[t]
     val y = if (descr.asseY == 1) fx.param1[t] else fx.param2[t]
@@ -143,13 +144,13 @@ private fun TrackpadFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier
         modifier
             .clip(forma)
             .background(Color(0xFF0E1118))
-            .border(1.dp, if (fx.toccato) Colori.Neutro else Colori.Linea, forma)
-            .pointerInput(d) {
+            .border(1.dp, if (fx.toccati[t]) Colori.Neutro else Colori.Linea, forma)
+            .pointerInput(d, t) {
                 awaitEachGesture {
                     val primo = awaitFirstDown(requireUnconsumed = false)
                     fun ax(o: Offset) = (o.x / size.width).coerceIn(0f, 1f)
                     fun ay(o: Offset) = (1f - o.y / size.height).coerceIn(0f, 1f)
-                    ctrl.fxTrackpadGiu(d, ax(primo.position), ay(primo.position))
+                    ctrl.fxTrackpadGiu(d, t, ax(primo.position), ay(primo.position))
                     primo.consume()
                     var dito = primo.id
                     try {
@@ -157,13 +158,13 @@ private fun TrackpadFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier
                             val e = awaitPointerEvent()
                             // un dito in più = HOLD
                             for (ch in e.changes) if (ch.id != dito && ch.changedToDown()) {
-                                ctrl.fxTrackpadTieni(d)
+                                ctrl.fxTrackpadTieni(d, t)
                                 ch.consume()
                             }
                             val p = e.changes.firstOrNull { it.id == dito }
                             if (p != null && p.pressed) {
                                 if (p.positionChanged()) {
-                                    ctrl.fxTrackpadSposta(d, ax(p.position), ay(p.position))
+                                    ctrl.fxTrackpadSposta(d, t, ax(p.position), ay(p.position))
                                     p.consume()
                                 }
                             } else {
@@ -172,7 +173,7 @@ private fun TrackpadFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier
                             }
                         }
                     } finally {
-                        ctrl.fxTrackpadSu(d)  // anche se il gesto viene interrotto
+                        ctrl.fxTrackpadSu(d, t)  // anche se il gesto viene interrotto
                     }
                 }
             },
@@ -187,14 +188,14 @@ private fun TrackpadFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier
             }
             val px = x * size.width
             val py = (1f - y) * size.height
-            val colore = if (fx.acceso) Colori.Testo else Colori.Scuro
+            val colore = if (fx.accesi[t]) Colori.Testo else Colori.Scuro
             drawLine(colore.copy(alpha = 0.35f), Offset(px, 0f), Offset(px, size.height), 1.dp.toPx())
             drawLine(colore.copy(alpha = 0.35f), Offset(0f, py), Offset(size.width, py), 1.dp.toPx())
-            if (fx.toccato) drawCircle(Colori.Neutro.copy(alpha = 0.18f), (if (grande) 30.dp else 18.dp).toPx(), Offset(px, py))
+            if (fx.toccati[t]) drawCircle(Colori.Neutro.copy(alpha = 0.18f), (if (grande) 30.dp else 18.dp).toPx(), Offset(px, py))
             drawCircle(colore, (if (grande) 9.dp else 5.dp).toPx(), Offset(px, py))
             drawCircle(colore, (if (grande) 15.dp else 9.dp).toPx(), Offset(px, py), style = Stroke(1.5.dp.toPx()))
         }
-        if (fx.hold) {
+        if (fx.tenuti[t]) {
             Text(
                 "HOLD", color = Colori.Sfondo, fontSize = if (grande) 10.sp else 7.sp, fontWeight = FontWeight.ExtraBold,
                 modifier = Modifier.align(Alignment.TopEnd).padding(5.dp).background(Colori.Verde, RoundedCornerShape(5.dp))
