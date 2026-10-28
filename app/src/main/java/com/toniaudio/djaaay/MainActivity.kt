@@ -3,8 +3,13 @@ package com.toniaudio.djaaay
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -25,6 +30,16 @@ class MainActivity : ComponentActivity() {
     private val chiediMusica = registerForActivityResult(ActivityResultContracts.RequestPermission()) { concesso ->
         if (concesso) controllore.aggiornaLibreria()
         else controllore.mostra("Senza il permesso DVS non può leggere la musica del telefono")
+    }
+
+    private val chiediAudio = registerForActivityResult(ActivityResultContracts.RequestPermission()) { concesso ->
+        controllore.permessoIngresso(concesso)
+    }
+
+    // schede audio USB collegate o scollegate (DVS)
+    private val schedeAudio = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>) = controllore.dvsAggiornaSchede()
+        override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>) = controllore.dvsAggiornaSchede()
     }
 
     private val stato = StatoApp()
@@ -51,12 +66,17 @@ class MainActivity : ComponentActivity() {
         val audioOk = Motore.avvia()
         ContextCompat.startForegroundService(this, Intent(this, ServizioAudio::class.java))
 
-        piattaforma = PiattaformaAndroid(this) { chiediMusica.launch(piattaforma.permessoDaChiedere()) }
+        piattaforma = PiattaformaAndroid(
+            this,
+            chiediPermesso = { chiediMusica.launch(piattaforma.permessoDaChiedere()) },
+            chiediPermessoAudio = { chiediAudio.launch(Manifest.permission.RECORD_AUDIO) },
+        )
         controllore = Controllore(stato, PonteNativo, piattaforma, lifecycleScope)
         Motore.impostaBuffer(stato.opzioni.buffer)
         if (!audioOk) controllore.mostra("Audio non disponibile: riavvia l'app")
         controllore.aggiornaLibreria()
         midi = MidiUsb(this, { controllore.midi(it) }, { controllore.midiCollegato(it) }).also { it.avvia() }
+        getSystemService(AudioManager::class.java).registerAudioDeviceCallback(schedeAudio, Handler(Looper.getMainLooper()))
 
         setContent {
             // a ogni fotogramma: posizione dei deck, livelli, REC
@@ -69,6 +89,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         midi?.ferma()
+        getSystemService(AudioManager::class.java).unregisterAudioDeviceCallback(schedeAudio)
         // Chiusura vera dell'app (non una rotazione): si ferma il servizio, che spegne audio e registrazione
         if (isFinishing) stopService(Intent(this, ServizioAudio::class.java))
         super.onDestroy()

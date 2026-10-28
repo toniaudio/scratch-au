@@ -9,6 +9,9 @@ interface Ponte {
     fun impostaDeck(deck: Int, parametro: Int, valore: Float)
     fun impostaMixer(parametro: Int, canale: Int, valore: Float)
     fun impostaFx(deck: Int, parametro: Int, tipo: Int, valore: Float)
+    fun impostaDvs(parametro: Int, valore: Float)
+    /** 8 valori (vedi djaaay_jni.cpp) e poi lo scope: 256 punti (x, y). */
+    fun statoDvs(dest: FloatArray)
     fun stato(dest: DoubleArray)
 }
 
@@ -33,6 +36,19 @@ object ParDeck {
     const val AVVIO = 2
     const val FRENATA = 3
     const val KEYLOCK = 4
+    const val DVS = 5
+}
+
+/** Parametri di impostaDvs. */
+object ParDvs {
+    const val TIPO = 0
+    const val GIRI45 = 1
+    const val ASSOLUTA = 2
+    const val SENSIBILITA = 3
+    const val PROTEZIONE = 4
+    const val GUADAGNO = 5
+    const val CALIBRA = 6
+    const val AZZERA = 7
 }
 
 /** Parametri di impostaMixer. */
@@ -65,5 +81,7 @@ object PonteNativo : Ponte {
     override fun impostaDeck(deck: Int, parametro: Int, valore: Float) = Motore.impostaDeck(deck, parametro, valore)
     override fun impostaMixer(parametro: Int, canale: Int, valore: Float) = Motore.impostaMixer(parametro, canale, valore)
     override fun impostaFx(deck: Int, parametro: Int, tipo: Int, valore: Float) = Motore.impostaFx(deck, parametro, tipo, valore)
+    override fun impostaDvs(parametro: Int, valore: Float) = Motore.impostaDvs(parametro, valore)
+    override fun statoDvs(dest: FloatArray) = Motore.statoDvs(dest)
     override fun stato(dest: DoubleArray) = Motore.stato(dest)
 }

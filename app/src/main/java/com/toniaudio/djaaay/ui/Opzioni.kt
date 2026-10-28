@@ -1,5 +1,6 @@
 package com.toniaudio.djaaay.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -26,7 +27,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -36,6 +39,10 @@ import com.toniaudio.djaaay.AzioneMidi
 import com.toniaudio.djaaay.Controllore
 import com.toniaudio.djaaay.nomeComando
 import com.toniaudio.djaaay.StatoApp
+import com.toniaudio.djaaay.StatoDvs
+import com.toniaudio.djaaay.TIPI_TIMECODE
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 /** Opzioni, aperte toccando "DVS" in alto: Generale · Audio · MIDI · DVS. */
@@ -74,11 +81,7 @@ fun FinestraOpzioni(app: StatoApp, c: Controllore) {
                     0 -> SchedaGenerale(app, c)
                     1 -> SchedaAudio(app, c)
                     2 -> SchedaMidi(app, c)
-                    else -> InArrivo(
-                        "DVS con vinile timecode",
-                        "Con una scheda audio USB e un vinile timecode Serato, il tasto DVS di ogni deck lo farà seguire il " +
-                            "giradischi. Qui ci saranno lo scope del segnale, il livello d'ingresso e la calibrazione. In arrivo.",
-                    )
+                    else -> SchedaDvs(app, c)
                 }
             }
         }
@@ -279,4 +282,145 @@ private fun PulsanteOpzioni(testo: String, acceso: Boolean, onTocco: () -> Unit)
     Tasto(Modifier.height(26.dp).width(78.dp), acceso = acceso, onTocco = onTocco) {
         Text(testo, color = if (acceso) Colori.Sfondo else Colori.Testo, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
     }
+}
+
+@Composable
+private fun SchedaDvs(app: StatoApp, c: Controllore) {
+    val dvs = app.dvs
+    LaunchedEffect(Unit) { c.dvsAggiornaSchede() }
+    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(26.dp)) {
+        // a sinistra: scope circolare del segnale e letture
+        Column(Modifier.width(190.dp).verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally) {
+            ScopeTimecode(app, Modifier.size(150.dp))
+            Spacer(Modifier.height(6.dp))
+            val buono = dvs.qualita >= 0.7f
+            RigaLettura(
+                "Segnale",
+                if (!dvs.aperto) "—" else "${(dvs.qualita * 100).roundToInt()}% · ${if (buono) "buono" else if (dvs.qualita > 0.3f) "debole" else "assente"}",
+                if (buono) Colori.Verde else Colori.Testo,
+            )
+            // scarto dalla velocità normale e verso (▶ avanti, ◀ indietro, ■ fermo)
+            val verso = if (dvs.velocita < -0.01f) "◀" else if (dvs.velocita > 0.01f) "▶" else "■"
+            RigaLettura("Velocità", if (!dvs.aperto || verso == "■") "— $verso" else "%+.1f%% %s".format((abs(dvs.velocita) - 1f) * 100f, verso))
+            RigaLettura("Posizione", if (dvs.posizione < 0) "—" else durataDecimi(dvs.posizione))
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                PulsanteOpzioni("Calibra", acceso = true) { c.dvsCalibra() }
+                PulsanteOpzioni("Azzera", acceso = false) { c.dvsAzzera() }
+            }
+            if (dvs.calibrato) {
+                Text(
+                    if (dvs.invertiti) "calibrato · canali scambiati e corretti" else "calibrato",
+                    color = Colori.Spento, fontSize = 9.sp, modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
+        // a destra: scheda, ingresso, livello, formato, come segue il vinile
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            Titolo("SEGNALE TIMECODE")
+            val scheda = dvs.scheda
+            Riga(
+                "Scheda audio",
+                when {
+                    dvs.aperto && scheda != null -> "${scheda.nome} · ${if (scheda.usb) "USB" else "linea"}"
+                    dvs.schede.isEmpty() -> "collega una scheda audio USB (es. con ingressi phono)"
+                    else -> dvs.schede.joinToString(" · ") { it.nome }
+                },
+            ) {
+                if (dvs.aperto) {
+                    Row(
+                        Modifier.background(Colori.Verde.copy(alpha = 0.15f), RoundedCornerShape(12.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.size(6.dp).background(Colori.Verde, RoundedCornerShape(3.dp)))
+                        Spacer(Modifier.width(5.dp))
+                        Text("collegata", color = Colori.Verde, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                } else {
+                    PulsanteOpzioni("Attiva", acceso = true) { c.apriIngressoDvs() }
+                }
+            }
+            if (dvs.schede.size > 1) {
+                RigaScelta("Scheda", dvs.schede.map { it.nome.take(12) }, dvs.schede.indexOfFirst { it.id == dvs.scheda?.id }) {
+                    c.dvsScegliScheda(dvs.schede[it])
+                }
+            }
+            RigaScelta("Ingresso", listOf("1–2", "3–4"), dvs.coppia) { c.dvsCoppia(it) }
+            Riga("Livello ingresso", "porta il segnale nel verde") {
+                MeterOrizzontale(dvs.livello, Modifier.width(90.dp).height(6.dp))
+                Spacer(Modifier.width(10.dp))
+                CursoreSottile((dvs.guadagnoDb + 12f) / 36f, { c.dvsGuadagno(it * 36f - 12f) }, Modifier.width(110.dp))
+                Text("%+d dB".format(dvs.guadagnoDb.roundToInt()), color = Colori.Testo, fontSize = 10.5.sp,
+                    fontFamily = FontFamily.Monospace, modifier = Modifier.width(52.dp).padding(start = 6.dp))
+            }
+            RigaScelta("Tipo di timecode", TIPI_TIMECODE, dvs.tipo) { c.dvsTipo(it) }
+            RigaScelta("Giri", listOf("33⅓", "45"), if (dvs.giri45) 1 else 0) { c.dvsGiri45(it == 1) }
+            Titolo("COME SEGUE IL VINILE")
+            Riga("Modalità", "assoluta = posizione del vinile; relativa = solo velocità") {
+                Schede(listOf("Assoluta", "Relativa"), if (dvs.assoluta) 0 else 1, { c.dvsAssoluta(it == 0) }, Modifier.width(140.dp), 10.sp)
+            }
+            RigaCursore("Sensibilità a disco fermo", "più alta = si ferma prima", dvs.sensibilita, "${(dvs.sensibilita * 100).roundToInt()}%") {
+                c.dvsSensibilita(it)
+            }
+            Riga("Protezione salto puntina", "in assoluta: se la puntina salta mentre suona, il brano non salta") {
+                Switch(
+                    dvs.protezione, { c.dvsProtezione(it) },
+                    colors = SwitchDefaults.colors(checkedTrackColor = Colori.Verde, checkedThumbColor = Color.White, uncheckedTrackColor = Colori.Linea),
+                )
+            }
+            Text(
+                "Poi tocca DVS sul deck A, sul B o su tutti e due: quei deck seguono il giradischi.",
+                color = Colori.Spento, fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+    }
+}
+
+/** Scope circolare: un buon segnale timecode è un anello verde regolare. */
+@Composable
+private fun ScopeTimecode(app: StatoApp, modifier: Modifier = Modifier) {
+    val dvs = app.dvs
+    val versione = dvs.versioneScope  // si ridisegna a ogni lettura
+    Canvas(modifier) {
+        if (versione < 0) return@Canvas
+        val r = size.minDimension / 2
+        val centro = Offset(size.width / 2, size.height / 2)
+        drawCircle(Color(0xFF0B0E14), r, centro)
+        drawCircle(Colori.Linea, r, centro, style = Stroke(1.dp.toPx()))
+        drawLine(Colori.Linea, Offset(centro.x, centro.y - r), Offset(centro.x, centro.y + r), 0.5.dp.toPx())
+        drawLine(Colori.Linea, Offset(centro.x - r, centro.y), Offset(centro.x + r, centro.y), 0.5.dp.toPx())
+        val colore = if (dvs.qualita >= 0.7f) Colori.Verde else if (dvs.qualita > 0.3f) Colori.Arancio else Colori.Spento
+        val raggioPunti = r * 0.85f
+        val punto = 1.6.dp.toPx()
+        for (i in 0 until StatoDvs.PUNTI_SCOPE) {
+            val x = dvs.scope[2 * i]
+            val y = dvs.scope[2 * i + 1]
+            drawCircle(colore.copy(alpha = 0.3f + 0.7f * i / StatoDvs.PUNTI_SCOPE), punto, Offset(centro.x + x * raggioPunti, centro.y - y * raggioPunti))
+        }
+    }
+}
+
+@Composable
+private fun RigaLettura(nome: String, valore: String, colore: Color = Colori.Testo) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(nome, color = Colori.Testo, fontSize = 11.sp, modifier = Modifier.weight(1f))
+        Text(valore, color = colore, fontSize = 11.sp, fontFamily = FontFamily.Monospace)
+    }
+}
+
+/** Meter orizzontale del livello d'ingresso: verde fino a −6 dB, poi arancio, rosso vicino al massimo. */
+@Composable
+private fun MeterOrizzontale(livello: Float, modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        drawRoundRect(Colori.Linea, cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2))
+        val v = kotlin.math.sqrt(livello.coerceIn(0f, 1f))
+        val colore = if (livello > 0.9f) Colori.RossoMeter else if (livello > 0.5f) Colori.Arancio else Colori.Verde
+        drawRoundRect(colore, size = androidx.compose.ui.geometry.Size(size.width * v, size.height),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2))
+    }
+}
+
+private fun durataDecimi(secondi: Double): String {
+    val s = secondi.coerceAtLeast(0.0)
+    return "%02d:%04.1f".format((s / 60).toInt(), s % 60)
 }

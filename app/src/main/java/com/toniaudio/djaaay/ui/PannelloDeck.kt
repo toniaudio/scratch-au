@@ -209,15 +209,19 @@ private fun ColonnaPitch(app: StatoApp, d: Int, c: Controllore) {
             )
         }
         Numero("%+.1f%%".format(deck.pitch * 100), dimensione = 10.sp)
-        Assegnabile(app, c, AzioneMidi.DVS, d) { Tasto(Modifier.width(44.dp).height(22.dp), onTocco = { c.dvs(d) }) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Canvas(Modifier.size(9.dp)) {
-                    drawCircle(Colori.Spento, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
-                    drawCircle(Colori.Spento, size.minDimension * 0.18f)
+        // DVS acceso: il deck segue il vinile timecode
+        Assegnabile(app, c, AzioneMidi.DVS, d) {
+            Tasto(Modifier.width(44.dp).height(22.dp), acceso = deck.dvs, onTocco = { c.dvs(d) }) {
+                val colore = if (deck.dvs) Colori.Sfondo else Colori.Spento
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Canvas(Modifier.size(9.dp)) {
+                        drawCircle(colore, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
+                        drawCircle(colore, size.minDimension * 0.18f)
+                    }
+                    Spacer(Modifier.width(3.dp))
+                    Etichetta("DVS", colore, 8.sp)
                 }
-                Spacer(Modifier.width(3.dp))
-                Etichetta("DVS", Colori.Spento, 8.sp)
             }
-        } }
+        }
     }
 }

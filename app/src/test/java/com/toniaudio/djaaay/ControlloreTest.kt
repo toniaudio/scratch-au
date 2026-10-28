@@ -264,4 +264,47 @@ class ControlloreTest {
         c.libreriaCarica(1)
         assertEquals("Brano 5", stato.deck[1].brano?.titolo)
     }
+
+    @Test
+    fun dvsAccendeIlDeckSoloConLaSchedaEIlPermesso() {
+        piattaforma.permessoIngresso = false
+        c.dvs(0)
+        assertEquals(false, stato.deck[0].dvs)  // prima il permesso
+        piattaforma.permessoIngresso = true
+        c.permessoIngresso(true)  // concesso: il deck A si accende da solo
+        assertTrue(stato.deck[0].dvs)
+        assertEquals(7 to 0, piattaforma.ingressoAperto)
+        assertEquals(1f, ponte.deck[0 to ParDeck.DVS])
+        c.dvs(1)
+        assertTrue(stato.deck[1].dvs)  // un solo timecode, due deck
+        c.dvsCoppia(1)  // ingressi 3-4: si riapre la scheda
+        assertEquals(7 to 1, piattaforma.ingressoAperto)
+        c.dvs(0)
+        assertEquals(false, stato.deck[0].dvs)
+        assertEquals(0f, ponte.deck[0 to ParDeck.DVS])
+        // scheda scollegata: si chiude tutto
+        piattaforma.schede = emptyList()
+        c.dvsAggiornaSchede()
+        assertEquals(false, stato.dvs.aperto)
+        assertEquals(false, stato.deck[1].dvs)
+        assertNull(piattaforma.ingressoAperto)
+        // senza scheda il DVS non si accende
+        c.dvs(0)
+        assertEquals(false, stato.deck[0].dvs)
+        assertTrue(stato.messaggio!!.contains("scheda audio USB"))
+    }
+
+    @Test
+    fun dvsOpzioniSalvateEMandateAlMotore() {
+        c.dvsTipo(1)
+        c.dvsAssoluta(true)
+        c.dvsGuadagno(6f)
+        assertEquals(1f, ponte.dvs[ParDvs.TIPO])
+        assertEquals(1f, ponte.dvs[ParDvs.ASSOLUTA])
+        val altroPonte = PonteFinto()
+        val altro = Controllore(StatoApp(), altroPonte, piattaforma, CoroutineScope(Dispatchers.Unconfined))
+        assertEquals(1, altro.stato.dvs.tipo)
+        assertTrue(altro.stato.dvs.assoluta)
+        assertEquals(6f, altroPonte.dvs[ParDvs.GUADAGNO])
+    }
 }

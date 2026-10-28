@@ -4,6 +4,8 @@
     <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-feature android:name="android.software.midi" android:required="false" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- DVS: l'ingresso della scheda audio (il giradischi col vinile timecode) -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <!-- servizio in primo piano: la musica continua a schermo spento -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

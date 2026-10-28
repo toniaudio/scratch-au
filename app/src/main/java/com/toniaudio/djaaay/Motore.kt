@@ -37,6 +37,12 @@ object Motore {
     external fun impostaDeck(deck: Int, parametro: Int, valore: Float)
     external fun impostaMixer(parametro: Int, canale: Int, valore: Float)
     external fun impostaFx(deck: Int, parametro: Int, tipo: Int, valore: Float)
+
+    // --- DVS: ingresso della scheda audio (coppia 0 = ingressi 1-2, 1 = 3-4); "" = aperto, altrimenti il problema
+    external fun dvsApri(deviceId: Int, coppia: Int): String
+    external fun dvsChiudi()
+    external fun impostaDvs(parametro: Int, valore: Float)
+    external fun statoDvs(dest: FloatArray)
     /** Istantanea per l'interfaccia, 20 valori (vedi djaaay_jni.cpp). */
     external fun stato(dest: DoubleArray)
 

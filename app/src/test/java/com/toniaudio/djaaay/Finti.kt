@@ -30,6 +30,15 @@ class PonteFinto : Ponte {
         fx[Triple(deck, parametro, tipo)] = valore
     }
 
+    val dvs = mutableMapOf<Int, Float>()
+    val istantaneaDvs = FloatArray(8 + 2 * StatoDvs.PUNTI_SCOPE)
+
+    override fun impostaDvs(parametro: Int, valore: Float) {
+        dvs[parametro] = valore
+    }
+
+    override fun statoDvs(dest: FloatArray) { istantaneaDvs.copyInto(dest) }
+
     override fun stato(dest: DoubleArray) { istantanea.copyInto(dest) }
 }
 
@@ -49,6 +58,20 @@ class PiattaformaFinta(var brani: List<Brano> = emptyList()) : Piattaforma {
         caricati += caricato.handle to deck
     }
     override fun scarta(caricato: BranoCaricato) {}
+    var permessoIngresso = true
+    var schede = listOf(SchedaAudio(7, "Behringer UMC404HD", 4, true))
+    var ingressoAperto: Pair<Int, Int>? = null
+    var erroreIngresso = ""
+    override fun haPermessoIngresso() = permessoIngresso
+    override fun chiediPermessoIngresso() {}
+    override fun schedeIngresso() = schede
+    override fun apriIngresso(id: Int, coppia: Int): String {
+        if (erroreIngresso.isEmpty()) ingressoAperto = id to coppia
+        return erroreIngresso
+    }
+    override fun chiudiIngresso() {
+        ingressoAperto = null
+    }
     override fun avviaRec(): String? = "DVS-prova.wav".also { rec = true }
     override fun fermaRec() {
         rec = false

@@ -118,6 +118,7 @@ class StatoDeck(val indice: Int) {
     var libCartella by mutableStateOf<String?>(null)
     var libSelezione by mutableIntStateOf(0)  // riga scelta col controller MIDI
     val fx = StatoFx()
+    var dvs by mutableStateOf(false)  // il deck segue il vinile timecode
 
     /** Durata di una battuta in secondi del brano (120 BPM se il tempo non è noto). */
     val battitoSecondi: Double get() = 60.0 / (if (bpm > 0) bpm else 120.0)
@@ -171,8 +172,40 @@ class Opzioni {
     var buffer by mutableIntStateOf(2)
 }
 
+/** Una scheda audio con ingressi (per il DVS). */
+data class SchedaAudio(val id: Int, val nome: String, val canali: Int, val usb: Boolean)
+
+val TIPI_TIMECODE = listOf("Serato CV02", "Traktor", "MixVibes")
+
+class StatoDvs {
+    var schede by mutableStateOf<List<SchedaAudio>>(emptyList())
+    var scheda by mutableStateOf<SchedaAudio?>(null)  // quella aperta (o da aprire)
+    var aperto by mutableStateOf(false)
+    var coppia by mutableIntStateOf(0)  // 0 ingressi 1-2, 1 ingressi 3-4
+    var guadagnoDb by mutableFloatStateOf(0f)
+    var tipo by mutableIntStateOf(0)
+    var giri45 by mutableStateOf(false)
+    var assoluta by mutableStateOf(false)
+    var sensibilita by mutableFloatStateOf(0.45f)
+    var protezione by mutableStateOf(true)
+    // letture dal motore
+    var qualita by mutableFloatStateOf(0f)
+    var velocita by mutableFloatStateOf(0f)
+    var posizione by mutableDoubleStateOf(-1.0)
+    var livello by mutableFloatStateOf(0f)
+    var calibrato by mutableStateOf(false)
+    var invertiti by mutableStateOf(false)
+    val scope = FloatArray(2 * PUNTI_SCOPE)
+    var versioneScope by mutableIntStateOf(0)  // cambia a ogni lettura: lo scope si ridisegna
+
+    companion object {
+        const val PUNTI_SCOPE = 256
+    }
+}
+
 class StatoApp {
     val midi = StatoMidi()
+    val dvs = StatoDvs()
     val deck = listOf(StatoDeck(0), StatoDeck(1))
     val mixer = StatoMixer()
     val opzioni = Opzioni()

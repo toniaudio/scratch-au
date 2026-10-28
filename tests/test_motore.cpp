@@ -934,6 +934,218 @@ static void testEffetti() {
     }
 }
 
+// --- DVS ---------------------------------------------------------------------------------------------------------
+
+// Segnale timecode sintetico come su un vinile: `vel(t)` = velocità, si parte dal ciclo `inizio`.
+// Il bit del ciclo k (il bit più alto del codice k) alza o abbassa l'ampiezza del primario dove viene letto.
+template <class V>
+static void timecodeSintetico(const FormatoTimecode& f, double sr, double secondi, double inizio, V vel,
+                              std::vector<float>& l, std::vector<float>& r, double giri = 1.0, float ampiezza = 0.3f,
+                              float squilibrio = 1.0f) {
+    const auto n = static_cast<size_t>(secondi * sr);
+    l.assign(n, 0.0f);
+    r.assign(n, 0.0f);
+    // codici fino a dove si arriva (avanti e indietro restano dentro inizio ± 30 s)
+    const int primo = std::max(0, static_cast<int>(inizio) - 30 * f.risoluzione - 64);
+    const int ultimo = static_cast<int>(inizio) + 30 * f.risoluzione + 64;
+    std::vector<uint8_t> bit(static_cast<size_t>(ultimo + 1));
+    uint32_t c = f.seme;
+    for (int k = 1; k <= ultimo; ++k) {
+        c = codiceSuccessivo(c, f);
+        bit[static_cast<size_t>(k)] = static_cast<uint8_t>((c >> (f.bit - 1)) & 1u);
+    }
+    double fase = inizio;  // in cicli
+    for (size_t i = 0; i < n; ++i) {
+        const double t = static_cast<double>(i) / sr;
+        fase += vel(t) * f.risoluzione * giri / sr;
+        // il bit si legge col primario al massimo (o al minimo se la polarità è invertita)
+        const long k = f.polaritaInvertita ? static_cast<long>(std::floor(fase)) : std::lround(fase);
+        const bool uno = k >= primo && k <= ultimo && bit[static_cast<size_t>(k)];
+        const float a = ampiezza * (uno ? 1.0f : 0.75f);
+        const float p = a * static_cast<float>(std::cos(2.0 * M_PI * fase));
+        float s = ampiezza * squilibrio * static_cast<float>(std::sin(2.0 * M_PI * fase));
+        if (f.faseInvertita) s = -s;  // stesso verso fisico, angolo che gira al contrario
+        (f.primarioDestro ? r : l)[i] = p;
+        (f.primarioDestro ? l : r)[i] = s;
+    }
+}
+
+struct LetturaTc {
+    std::vector<float> vel;
+    std::vector<double> pos;  // < 0 = non valida (una per blocco)
+};
+
+static LetturaTc leggiTc(Timecode& tc, const std::vector<float>& l, const std::vector<float>& r, int blocco = 256) {
+    LetturaTc o;
+    o.vel.resize(l.size());
+    for (size_t i = 0; i < l.size(); i += static_cast<size_t>(blocco)) {
+        const int n = static_cast<int>(std::min<size_t>(static_cast<size_t>(blocco), l.size() - i));
+        tc.processa(l.data() + i, r.data() + i, n, o.vel.data() + i);
+        o.pos.push_back(tc.posizioneValida() ? tc.posizioneSecondi() : -1.0);
+    }
+    return o;
+}
+
+static float mediaTra(const std::vector<float>& v, double da, double a, double sr) {
+    double s = 0.0;
+    size_t c = 0;
+    for (size_t i = static_cast<size_t>(da * sr); i < std::min(v.size(), static_cast<size_t>(a * sr)); ++i, ++c) s += v[i];
+    return c ? static_cast<float>(s / c) : 0.0f;
+}
+
+static float scartoMassimo(const std::vector<float>& v, double da, double a, double sr, float atteso) {
+    float m = 0.0f;
+    for (size_t i = static_cast<size_t>(da * sr); i < std::min(v.size(), static_cast<size_t>(a * sr)); ++i)
+        m = std::max(m, std::fabs(v[i] - atteso));
+    return m;
+}
+
+static void testTimecode() {
+    const double sr = 48000.0;
+    // i parametri dei formati danno codici tutti diversi lungo il disco (altrimenti la posizione sarebbe ambigua)
+    for (int t = 0; t < 3; ++t) {
+        const FormatoTimecode& f = formatoTimecode(t);
+        std::vector<uint32_t> codici;
+        codici.reserve(static_cast<size_t>(f.lunghezza));
+        uint32_t c = f.seme;
+        for (int i = 0; i < f.lunghezza; ++i) {
+            codici.push_back(c);
+            c = codiceSuccessivo(c, f);
+        }
+        std::sort(codici.begin(), codici.end());
+        const bool unici = std::adjacent_find(codici.begin(), codici.end()) == codici.end();
+        verifica(unici, (std::string("timecode ") + f.nome + ": codici tutti diversi lungo il disco").c_str());
+    }
+
+    for (int t = 0; t < 3; ++t) {
+        const FormatoTimecode& f = formatoTimecode(t);
+        const std::string nome = f.nome;
+        Timecode tc;
+        tc.impostaTipo(t);
+        tc.prepara(sr);
+        std::vector<float> l, r;
+        const double inizio = 60.0 * f.risoluzione;  // al minuto 1 del disco
+        timecodeSintetico(f, sr, 2.0, inizio, [](double) { return 1.0; }, l, r);
+        auto o = leggiTc(tc, l, r);
+        verifica(std::fabs(mediaTra(o.vel, 0.5, 2.0, sr) - 1.0f) < 0.005f && scartoMassimo(o.vel, 0.5, 2.0, sr, 1.0f) < 0.05f,
+                 (nome + ": velocità normale letta = 1").c_str());
+        const double fine = o.pos.back();
+        verifica(std::fabs(fine - 62.0) < 0.01, (nome + ": posizione assoluta letta (minuto 1 + 2 s)").c_str());
+        if (std::fabs(fine - 62.0) >= 0.01) std::printf("     posizione letta %.4f\n", fine);
+    }
+
+    const FormatoTimecode& serato = formatoTimecode(kSerato);
+    {  // indietro, metà velocità, 45 giri, silenzio
+        Timecode tc;
+        tc.prepara(sr);
+        std::vector<float> l, r;
+        timecodeSintetico(serato, sr, 2.0, 100000.0, [](double) { return -1.0; }, l, r);
+        auto o = leggiTc(tc, l, r);
+        verifica(std::fabs(mediaTra(o.vel, 0.5, 2.0, sr) + 1.0f) < 0.005f, "dvs: all'indietro velocità = −1");
+        verifica(std::fabs(o.pos.back() - 98.0) < 0.01, "dvs: all'indietro la posizione scende (100 s − 2 s)");
+
+        timecodeSintetico(serato, sr, 1.0, 100000.0, [](double) { return 0.5; }, l, r);
+        o = leggiTc(tc, l, r);
+        verifica(std::fabs(mediaTra(o.vel, 0.5, 1.0, sr) - 0.5f) < 0.005f, "dvs: metà velocità = 0,5");
+
+        tc.giri45 = true;
+        timecodeSintetico(serato, sr, 1.0, 100000.0, [](double) { return 1.0; }, l, r, 1.35);
+        o = leggiTc(tc, l, r);
+        verifica(std::fabs(mediaTra(o.vel, 0.5, 1.0, sr) - 1.0f) < 0.005f, "dvs: disco a 45 giri letto come velocità 1");
+        tc.giri45 = false;
+
+        std::vector<float> zero(static_cast<size_t>(sr), 0.0f);
+        o = leggiTc(tc, zero, zero);
+        verifica(scartoMassimo(o.vel, 0.2, 1.0, sr, 0.0f) < 1e-6f && tc.qualita() < 0.1f, "dvs: senza segnale fermo e qualità bassa");
+        // rumore leggero (giradischi fermo): resta fermo
+        std::vector<float> rl(zero.size()), rr(zero.size());
+        uint32_t x = 1;
+        for (size_t i = 0; i < rl.size(); ++i) {
+            x = x * 1664525u + 1013904223u;
+            rl[i] = 0.002f * (static_cast<float>(x >> 8) / 8388608.0f - 1.0f);
+            x = x * 1664525u + 1013904223u;
+            rr[i] = 0.002f * (static_cast<float>(x >> 8) / 8388608.0f - 1.0f);
+        }
+        o = leggiTc(tc, rl, rr);
+        verifica(scartoMassimo(o.vel, 0.2, 1.0, sr, 0.0f) < 0.05f, "dvs: col rumore del giradischi fermo il disco non si muove");
+    }
+    {  // scratch: avanti e indietro a 2 Hz fino a ±2
+        Timecode tc;
+        tc.prepara(sr);
+        std::vector<float> l, r;
+        auto vel = [](double t) { return 2.0 * std::sin(2.0 * M_PI * 2.0 * t); };
+        timecodeSintetico(serato, sr, 2.0, 200000.0, vel, l, r);
+        auto o = leggiTc(tc, l, r);
+        // si confronta con la velocità vera di ~3 ms prima (il filtro della velocità ha quel ritardo)
+        int giusti = 0, contati = 0;
+        float errore = 0.0f;
+        for (size_t i = static_cast<size_t>(0.2 * sr); i < o.vel.size(); ++i) {
+            const double vero = vel(static_cast<double>(i) / sr - 0.003);
+            if (std::fabs(vero) < 0.3) continue;
+            ++contati;
+            if ((o.vel[i] > 0) == (vero > 0)) ++giusti;
+            errore = std::max(errore, static_cast<float>(std::fabs(o.vel[i] - vero)));
+        }
+        verifica(giusti == contati && errore < 0.15f, "dvs: scratch avanti/indietro seguito (verso sempre giusto, errore < 0,15)");
+        if (errore >= 0.15f) std::printf("     errore massimo %.3f\n", errore);
+    }
+    {  // canali scambiati e sbilanciati: Calibra (col disco in play) li sistema
+        Timecode tc;
+        tc.prepara(sr);
+        std::vector<float> l, r;
+        timecodeSintetico(serato, sr, 2.0, 100000.0, [](double) { return 1.0; }, l, r, 1.0, 0.3f, 0.6f);
+        std::swap(l, r);
+        tc.chiediCalibra = true;
+        auto o = leggiTc(tc, l, r);
+        verifica(tc.calibrato() && tc.canaliInvertiti(), "dvs: calibra trova i canali scambiati");
+        timecodeSintetico(serato, sr, 1.0, 100000.0, [](double) { return 1.0; }, l, r, 1.0, 0.3f, 0.6f);
+        std::swap(l, r);
+        o = leggiTc(tc, l, r);
+        verifica(std::fabs(mediaTra(o.vel, 0.3, 1.0, sr) - 1.0f) < 0.005f && scartoMassimo(o.vel, 0.3, 1.0, sr, 1.0f) < 0.05f,
+                 "dvs: dopo calibra velocità giusta anche con canali sbilanciati");
+        tc.chiediAzzera = true;
+        o = leggiTc(tc, l, r);
+        verifica(!tc.calibrato() && mediaTra(o.vel, 0.3, 1.0, sr) < 0.0f, "dvs: azzera toglie la calibrazione");
+    }
+    {  // deck che segue il vinile: velocità relativa, poi posizione assoluta alla "puntina appoggiata"
+        Motore m;
+        m.prepara(sr);
+        m.deck[0].carica(sinusoide(440.0, 300.0, 44100.0));
+        m.deck[0].dvs = true;
+        std::vector<float> l, r, inter;
+        timecodeSintetico(serato, sr, 2.0, 30000.0, [](double) { return 1.0; }, l, r);
+        auto spingi = [&](double secondi) {
+            std::vector<float> out(512);
+            const auto n = static_cast<size_t>(secondi * sr);
+            for (size_t i = 0; i < n; i += 256) {
+                const int k = static_cast<int>(std::min<size_t>(256, n - i));
+                inter.resize(static_cast<size_t>(k) * 2);
+                for (int j = 0; j < k; ++j) {
+                    inter[static_cast<size_t>(2 * j)] = i + j < l.size() ? l[i + j] : 0.0f;
+                    inter[static_cast<size_t>(2 * j + 1)] = i + j < r.size() ? r[i + j] : 0.0f;
+                }
+                m.ingresso.scrivi(inter.data(), k, 2, 0);
+                m.render(out.data(), k);
+            }
+        };
+        spingi(2.0);
+        verifica(vicino(m.deck[0].posizioneSecondi(), 2.0, 0.02), "dvs relativa: il deck avanza come il vinile");
+        verifica(!m.deck[1].inPlay() && m.deck[1].posizioneSecondi() == 0.0, "dvs: il deck senza DVS non si muove");
+        // assoluta: puntina appoggiata al secondo 30 del disco → il deck va lì
+        m.dvsAssoluta = true;
+        std::vector<float> zero(static_cast<size_t>(0.5 * sr), 0.0f);
+        l = zero;
+        r = zero;
+        spingi(0.5);
+        const double fermo = m.deck[0].posizioneSecondi();
+        verifica(vicino(fermo, 2.0, 0.06), "dvs: puntina alzata, il deck si ferma");
+        timecodeSintetico(serato, sr, 1.0, 30000.0, [](double) { return 1.0; }, l, r);
+        spingi(1.0);
+        verifica(vicino(m.deck[0].posizioneSecondi(), 31.0, 0.03), "dvs assoluta: il deck va dove è la puntina");
+        if (!vicino(m.deck[0].posizioneSecondi(), 31.0, 0.03)) std::printf("     posizione deck %.3f\n", m.deck[0].posizioneSecondi());
+    }
+}
+
 int main() {
     testDeck();
     testCueLoop();
@@ -947,6 +1159,7 @@ int main() {
     testCacheWaveform();
     testRegistrazione();
     testEffetti();
+    testTimecode();
     std::printf(errori ? "\n%d ERRORI\n" : "\ntutto ok\n", errori);
     return errori ? EXIT_FAILURE : EXIT_SUCCESS;
 }

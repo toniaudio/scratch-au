@@ -109,6 +109,25 @@ class SchermateTest {
         s.schedaOpzioni = 2
     }
 
+    @Test fun opzioniDvs() = foto("10-opzioni-dvs") { s, c ->
+        c.dvs(0)  // con la scheda finta (Behringer UMC404HD) collegata
+        s.messaggio = null
+        val d = s.dvs
+        d.qualita = 0.96f
+        d.velocita = 1.003f
+        d.posizione = 102.6
+        d.livello = 0.35f
+        d.guadagnoDb = 6f
+        for (i in 0 until StatoDvs.PUNTI_SCOPE) {
+            val a = i * 0.31
+            val r = 0.8 + 0.04 * kotlin.math.sin(i * 1.7)
+            d.scope[2 * i] = (r * kotlin.math.cos(a)).toFloat()
+            d.scope[2 * i + 1] = (r * kotlin.math.sin(a)).toFloat()
+        }
+        s.opzioniAperte = true
+        s.schedaOpzioni = 3
+    }
+
     @Test fun vuoto() = foto("7-appena-aperta") { s, _ ->
         for (d in s.deck) { d.brano = null; d.waveform = null; d.bpm = 0.0; d.posizione = 0.0; d.durata = 0.0; d.inPlay = false; d.livello = 0f }
         s.deck[1].caricamento = 0.4f

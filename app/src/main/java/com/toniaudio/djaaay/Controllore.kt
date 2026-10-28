@@ -29,6 +29,14 @@ interface Piattaforma {
     fun diagnostica(): String
     fun leggiPreferenza(chiave: String): String?
     fun salvaPreferenza(chiave: String, valore: String)
+
+    // DVS: ingresso della scheda audio
+    fun haPermessoIngresso(): Boolean
+    fun chiediPermessoIngresso()
+    fun schedeIngresso(): List<SchedaAudio>
+    /** "" se l'ingresso è aperto, altrimenti il problema. `coppia` 0 = ingressi 1-2, 1 = 3-4. */
+    fun apriIngresso(id: Int, coppia: Int): String
+    fun chiudiIngresso()
 }
 
 /**
@@ -49,6 +57,8 @@ class Controllore(
         applicaOpzioni()
         applicaFx()
         caricaMidi()
+        caricaDvs()
+        applicaDvs()
         stato.permessoLibreria = piattaforma.haPermessoLibreria()
         stato.recenti = piattaforma.leggiPreferenza("recenti")?.split(',')?.mapNotNull { it.toLongOrNull() } ?: emptyList()
         stato.bpmNoti = piattaforma.leggiPreferenza("bpm")?.split(';')?.mapNotNull { voce ->
@@ -76,6 +86,7 @@ class Controllore(
         stato.mixer.rec = istantanea[18] > 0.5
         stato.mixer.recSecondi = istantanea[19]
         aggiornaBattitoFx()
+        aggiornaDvs()
     }
 
     fun mostra(testo: String) {
@@ -134,7 +145,6 @@ class Controllore(
         ponte.impostaDeck(d, ParDeck.KEYLOCK, if (deck.keylock) 1f else 0f)
     }
 
-    fun dvs(d: Int) = mostra("DVS: arriverà con la scheda audio USB e il vinile timecode")
 
     // ------------------------------------------------------------------ hot cue e loop
     /** Tocco su un hot cue: vuoto → lo fissa qui; pieno → ci salta. */
@@ -555,6 +565,194 @@ class Controllore(
             val azione = AzioneMidi.entries.firstOrNull { it.name == nome } ?: continue
             stato.midi.assegnazioni += Assegnazione(sorgente, azione, deck.toIntOrNull()?.coerceIn(0, 1) ?: 0)
         }
+    }
+
+    // ------------------------------------------------------------------ DVS
+    private val istantaneaDvs = FloatArray(8 + 2 * StatoDvs.PUNTI_SCOPE)
+    private var deckInAttesaPermesso = -1
+
+    /** Tasto DVS del deck: il deck segue il vinile timecode (o torna normale). */
+    fun dvs(d: Int) {
+        val deck = stato.deck[d]
+        if (deck.dvs) {
+            deck.dvs = false
+            ponte.impostaDeck(d, ParDeck.DVS, 0f)
+            return
+        }
+        if (!apriIngressoDvs(d)) return
+        deck.dvs = true
+        ponte.impostaDeck(d, ParDeck.DVS, 1f)
+        mostra("DVS acceso sul deck ${deck.lettera}: ora segue il vinile")
+    }
+
+    /** Apre l'ingresso della scheda se non è già aperto; false = non si può (e lo dice). */
+    fun apriIngressoDvs(deckInAttesa: Int = -1): Boolean {
+        val dvs = stato.dvs
+        if (dvs.aperto) return true
+        if (!piattaforma.haPermessoIngresso()) {
+            deckInAttesaPermesso = deckInAttesa
+            piattaforma.chiediPermessoIngresso()
+            mostra("DVS: consenti l'uso dell'ingresso audio (serve per leggere il giradischi)")
+            return false
+        }
+        dvs.schede = piattaforma.schedeIngresso()
+        val scheda = dvs.scheda?.let { s -> dvs.schede.firstOrNull { it.id == s.id || it.nome == s.nome } }
+            ?: dvs.schede.firstOrNull { it.usb }
+        if (scheda == null) {
+            mostra("DVS: collega la scheda audio USB con il giradischi, poi tocca di nuovo DVS")
+            return false
+        }
+        val errore = piattaforma.apriIngresso(scheda.id, dvs.coppia)
+        if (errore.isNotEmpty()) {
+            mostra("DVS: $errore")
+            return false
+        }
+        dvs.scheda = scheda
+        dvs.aperto = true
+        return true
+    }
+
+    fun permessoIngresso(concesso: Boolean) {
+        val d = deckInAttesaPermesso
+        deckInAttesaPermesso = -1
+        if (!concesso) return mostra("Senza il permesso dell'ingresso audio il DVS non può leggere il giradischi")
+        if (d >= 0) dvs(d) else apriIngressoDvs()
+    }
+
+    /** Schede collegate o scollegate (e all'apertura della scheda DVS delle opzioni). */
+    fun dvsAggiornaSchede() {
+        val dvs = stato.dvs
+        dvs.schede = if (piattaforma.haPermessoIngresso()) piattaforma.schedeIngresso() else emptyList()
+        val s = dvs.scheda
+        if (dvs.aperto && s != null && dvs.schede.none { it.id == s.id }) {
+            chiudiIngressoDvs()
+            mostra("DVS: la scheda audio è stata scollegata")
+        }
+    }
+
+    private fun chiudiIngressoDvs() {
+        piattaforma.chiudiIngresso()
+        stato.dvs.aperto = false
+        for (deck in stato.deck) if (deck.dvs) {
+            deck.dvs = false
+            ponte.impostaDeck(deck.indice, ParDeck.DVS, 0f)
+        }
+    }
+
+    private fun riapriIngressoDvs() {
+        if (!stato.dvs.aperto) return
+        piattaforma.chiudiIngresso()
+        stato.dvs.aperto = false
+        if (!apriIngressoDvs()) chiudiIngressoDvs()
+    }
+
+    fun dvsScegliScheda(s: SchedaAudio) {
+        stato.dvs.scheda = s
+        riapriIngressoDvs()
+        salvaDvs()
+    }
+
+    fun dvsCoppia(coppia: Int) {
+        stato.dvs.coppia = coppia.coerceIn(0, 1)
+        riapriIngressoDvs()
+        salvaDvs()
+    }
+
+    fun dvsGuadagno(db: Float) {
+        stato.dvs.guadagnoDb = db.coerceIn(-12f, 24f)
+        ponte.impostaDvs(ParDvs.GUADAGNO, stato.dvs.guadagnoDb)
+        salvaDvs()
+    }
+
+    fun dvsTipo(tipo: Int) {
+        stato.dvs.tipo = tipo.coerceIn(0, TIPI_TIMECODE.size - 1)
+        ponte.impostaDvs(ParDvs.TIPO, stato.dvs.tipo.toFloat())
+        salvaDvs()
+    }
+
+    fun dvsGiri45(acceso: Boolean) {
+        stato.dvs.giri45 = acceso
+        ponte.impostaDvs(ParDvs.GIRI45, if (acceso) 1f else 0f)
+        salvaDvs()
+    }
+
+    fun dvsAssoluta(acceso: Boolean) {
+        stato.dvs.assoluta = acceso
+        ponte.impostaDvs(ParDvs.ASSOLUTA, if (acceso) 1f else 0f)
+        salvaDvs()
+    }
+
+    fun dvsSensibilita(v: Float) {
+        stato.dvs.sensibilita = v.coerceIn(0f, 1f)
+        ponte.impostaDvs(ParDvs.SENSIBILITA, stato.dvs.sensibilita)
+        salvaDvs()
+    }
+
+    fun dvsProtezione(acceso: Boolean) {
+        stato.dvs.protezione = acceso
+        ponte.impostaDvs(ParDvs.PROTEZIONE, if (acceso) 1f else 0f)
+        salvaDvs()
+    }
+
+    fun dvsCalibra() {
+        if (!stato.dvs.aperto) return mostra("DVS: prima attiva l'ingresso della scheda")
+        ponte.impostaDvs(ParDvs.CALIBRA, 1f)
+        mostra("Calibrazione: lascia girare il disco a velocità normale per un secondo")
+    }
+
+    fun dvsAzzera() = ponte.impostaDvs(ParDvs.AZZERA, 1f)
+
+    private fun aggiornaDvs() {
+        val dvs = stato.dvs
+        if (!dvs.aperto) return
+        ponte.statoDvs(istantaneaDvs)
+        if (istantaneaDvs[4] < 0.5f) {
+            // l'ingresso si è chiuso da solo (scheda scollegata)
+            chiudiIngressoDvs()
+            return mostra("DVS: la scheda audio non risponde più")
+        }
+        dvs.qualita = istantaneaDvs[0]
+        dvs.velocita = istantaneaDvs[1]
+        dvs.posizione = istantaneaDvs[2].toDouble()
+        dvs.livello = istantaneaDvs[3]
+        dvs.calibrato = istantaneaDvs[5] > 0.5f
+        dvs.invertiti = istantaneaDvs[6] > 0.5f
+        istantaneaDvs.copyInto(dvs.scope, 0, 8, 8 + 2 * StatoDvs.PUNTI_SCOPE)
+        dvs.versioneScope++
+    }
+
+    private fun applicaDvs() {
+        val dvs = stato.dvs
+        ponte.impostaDvs(ParDvs.TIPO, dvs.tipo.toFloat())
+        ponte.impostaDvs(ParDvs.GIRI45, if (dvs.giri45) 1f else 0f)
+        ponte.impostaDvs(ParDvs.ASSOLUTA, if (dvs.assoluta) 1f else 0f)
+        ponte.impostaDvs(ParDvs.SENSIBILITA, dvs.sensibilita)
+        ponte.impostaDvs(ParDvs.PROTEZIONE, if (dvs.protezione) 1f else 0f)
+        ponte.impostaDvs(ParDvs.GUADAGNO, dvs.guadagnoDb)
+    }
+
+    private fun salvaDvs() {
+        val d = stato.dvs
+        piattaforma.salvaPreferenza(
+            "dvs",
+            listOf(d.coppia.toFloat(), d.guadagnoDb, d.tipo.toFloat(), if (d.giri45) 1f else 0f, if (d.assoluta) 1f else 0f,
+                d.sensibilita, if (d.protezione) 1f else 0f).joinToString(","),
+        )
+        d.scheda?.let { piattaforma.salvaPreferenza("dvsScheda", it.nome) }
+    }
+
+    private fun caricaDvs() {
+        val d = stato.dvs
+        piattaforma.leggiPreferenza("dvsScheda")?.let { d.scheda = SchedaAudio(-1, it, 2, true) }
+        val v = piattaforma.leggiPreferenza("dvs")?.split(',')?.mapNotNull { it.toFloatOrNull() } ?: return
+        if (v.size < 7) return
+        d.coppia = v[0].toInt().coerceIn(0, 1)
+        d.guadagnoDb = v[1]
+        d.tipo = v[2].toInt().coerceIn(0, TIPI_TIMECODE.size - 1)
+        d.giri45 = v[3] > 0.5f
+        d.assoluta = v[4] > 0.5f
+        d.sensibilita = v[5]
+        d.protezione = v[6] > 0.5f
     }
 
     // ------------------------------------------------------------------ opzioni

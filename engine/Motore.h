@@ -3,10 +3,12 @@
 
 #include <vector>
 
+#include "Anello.h"
 #include "Deck.h"
 #include "Effetti.h"
 #include "Mixer.h"
 #include "Registratore.h"
+#include "Timecode.h"
 
 namespace djaaay {
 
@@ -23,12 +25,23 @@ public:
     Mixer mixer;
     Registratore registratore;  // REC: riceve l'uscita del master
 
+    // DVS: l'ingresso della scheda audio arriva nell'anello (dal thread d'ingresso), il timecode lo decodifica
+    // e i deck con DVS acceso lo seguono.
+    AnelloStereo ingresso{16384};
+    Timecode timecode;
+    std::atomic<bool> dvsAssoluta{false};
+    std::atomic<bool> dvsProtezione{true};
+
     // Thread audio: `frame` campioni stereo interleaved.
     void render(float* uscita, int frame);
 
 private:
     double sr_ = 48000.0;
+    void leggiTimecode(int n);
     float aL_[kBlocco], aR_[kBlocco], bL_[kBlocco], bR_[kBlocco];
+    float inL_[2 * kBlocco], inR_[2 * kBlocco], velIn_[2 * kBlocco], velTc_[kBlocco];
+    float ultimaVel_ = 0.0f;
+    int64_t senzaIngresso_ = 0;  // campioni di uscita senza audio dalla scheda
 };
 
 }  // namespace djaaay

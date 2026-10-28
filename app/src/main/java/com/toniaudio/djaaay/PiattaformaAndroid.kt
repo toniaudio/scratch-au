@@ -4,7 +4,9 @@ import android.Manifest
 import android.content.ContentUris
 import android.content.Context
 import android.content.pm.PackageManager
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -24,6 +26,7 @@ import java.io.IOException
 class PiattaformaAndroid(
     private val context: Context,
     private val chiediPermesso: () -> Unit,
+    private val chiediPermessoAudio: () -> Unit,
 ) : Piattaforma {
 
     private val preferenze = context.getSharedPreferences("dvs", Context.MODE_PRIVATE)
@@ -190,4 +193,27 @@ class PiattaformaAndroid(
     override fun salvaPreferenza(chiave: String, valore: String) {
         preferenze.edit().putString(chiave, valore).apply()
     }
+
+    // ------------------------------------------------------------------ DVS
+    override fun haPermessoIngresso() =
+        ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
+    override fun chiediPermessoIngresso() = chiediPermessoAudio()
+
+    override fun schedeIngresso(): List<SchedaAudio> {
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val usb = setOf(AudioDeviceInfo.TYPE_USB_DEVICE, AudioDeviceInfo.TYPE_USB_HEADSET, AudioDeviceInfo.TYPE_USB_ACCESSORY)
+        return audio.getDevices(AudioManager.GET_DEVICES_INPUTS)
+            .filter { it.type in usb || it.type == AudioDeviceInfo.TYPE_LINE_ANALOG || it.type == AudioDeviceInfo.TYPE_LINE_DIGITAL }
+            .map { d ->
+                // canali: il massimo dichiarato (lista vuota = qualsiasi numero)
+                val canali = d.channelCounts.maxOrNull() ?: 2
+                SchedaAudio(d.id, d.productName?.toString()?.ifBlank { null } ?: "Scheda audio", canali, d.type in usb)
+            }
+            .distinctBy { it.id }
+    }
+
+    override fun apriIngresso(id: Int, coppia: Int): String = Motore.dvsApri(id, coppia)
+
+    override fun chiudiIngresso() = Motore.dvsChiudi()
 }

@@ -194,14 +194,25 @@ void Deck::applica(const ComandoDeck& c) {
     }
 }
 
-void Deck::render(float* l, float* r, int frame) {
+void Deck::render(float* l, float* r, int frame, const float* velocitaTimecode) {
     ComandoDeck c;
     while (comandi_.ricevi(c)) applica(c);
+    const float* tc = dvs.load(std::memory_order_relaxed) ? velocitaTimecode : nullptr;
     for (int fatti = 0; fatti < frame; fatti += kMaxBlocco)
-        renderBlocco(l + fatti, r + fatti, std::min(kMaxBlocco, frame - fatti));
+        renderBlocco(l + fatti, r + fatti, std::min(kMaxBlocco, frame - fatti), tc ? tc + fatti : nullptr);
 }
 
-void Deck::renderBlocco(float* l, float* r, int frame) {
+void Deck::dvsPosizione(double secondi, bool riacquisito, bool dopoSilenzio, bool protezione) {
+    if (traccia_ == nullptr || !dvs.load(std::memory_order_relaxed)) return;
+    const double sr = traccia_->sampleRate;
+    const double nuova = secondi * sr;
+    const double diff = std::fabs(nuova - pos_);
+    // puntina appoggiata: si va dove dice il vinile; con la protezione i salti mentre suona si ignorano
+    const bool salto = (riacquisito && (dopoSilenzio || !protezione)) || (!protezione && diff > 0.25 * sr);
+    if (salto && diff > 0.02 * sr) salta(nuova);
+}
+
+void Deck::renderBlocco(float* l, float* r, int frame, const float* timecode) {
     if (traccia_ == nullptr) {
         std::fill(l, l + frame, 0.0f);
         std::fill(r, r + frame, 0.0f);
@@ -236,7 +247,10 @@ void Deck::renderBlocco(float* l, float* r, int frame) {
     for (int i = 0; i < frame; ++i) {
         // --- velocità del disco (il motore può spegnersi a metà blocco, a fine brano)
         const double velMotore = motore_ ? velNormale : 0.0;
-        if (tocco_) {
+        if (timecode) {
+            // DVS: il disco va come il vinile (il pitch del deck non conta: lo dà il giradischi)
+            vel_ = static_cast<double>(timecode[i]) * base_;
+        } else if (tocco_) {
             campioniDaUltimoTocco_ += 1.0;
             if (toccoVelBersaglio_ != 0.0) {
                 toccoBersaglio_ += toccoVelBersaglio_;
@@ -316,7 +330,7 @@ void Deck::renderBlocco(float* l, float* r, int frame) {
         }
         if (pos_ >= fine) {
             pos_ = fine;
-            if (!tocco_) {
+            if (!tocco_ && !timecode) {
                 motore_ = anteprimaCue_ = scivola_ = false;
                 vel_ = 0.0;
             }

@@ -190,6 +190,93 @@ Uscita* uscita() {
     return &u;
 }
 
+// Ingresso della scheda audio per il DVS: il giradischi col vinile timecode. I campioni (due canali scelti)
+// vanno nell'anello del motore, che li decodifica nel thread di uscita.
+class IngressoDvs : public oboe::AudioStreamDataCallback, public oboe::AudioStreamErrorCallback {
+public:
+    // `primo` = primo canale (0 = ingressi 1-2, 2 = ingressi 3-4). Restituisce "" se va, altrimenti il problema.
+    std::string apri(int deviceId, int primo) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        chiudiSenzaLock();
+        const int sr = uscita()->sampleRate();
+        if (sr <= 0) return "l'audio di uscita non è attivo";
+        primo_ = primo;
+        for (int tentativo = 0; tentativo < 2; ++tentativo) {
+            oboe::AudioStreamBuilder b;
+            b.setDirection(oboe::Direction::Input)
+                ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
+                ->setSharingMode(tentativo == 0 ? oboe::SharingMode::Exclusive : oboe::SharingMode::Shared)
+                ->setFormat(oboe::AudioFormat::Float)
+                ->setChannelCount(primo + 2)
+                ->setSampleRate(sr)  // stessa frequenza dell'uscita: il timecode si legge a quella
+                ->setSampleRateConversionQuality(oboe::SampleRateConversionQuality::Medium)
+                ->setInputPreset(oboe::InputPreset::Unprocessed)  // niente filtri "voce": il segnale deve arrivare intatto
+                ->setDataCallback(this)
+                ->setErrorCallback(this);
+            if (deviceId > 0) b.setDeviceId(deviceId);
+            const oboe::Result r = b.openStream(stream_);
+            if (r != oboe::Result::OK) {
+                stream_.reset();
+                if (tentativo == 1) return std::string("la scheda non si apre (") + oboe::convertToText(r) + ")";
+                continue;
+            }
+            if (stream_->getChannelCount() < primo + 2) {
+                chiudiSenzaLock();
+                return "la scheda non ha gli ingressi 3-4";
+            }
+            if (stream_->requestStart() != oboe::Result::OK) {
+                chiudiSenzaLock();
+                if (tentativo == 1) return "la scheda non parte";
+                continue;
+            }
+            __android_log_print(ANDROID_LOG_INFO, kTag, "ingresso DVS %d Hz, %d canali", stream_->getSampleRate(),
+                                stream_->getChannelCount());
+            return "";
+        }
+        return "la scheda non si apre";
+    }
+
+    void chiudi() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        chiudiSenzaLock();
+    }
+
+    bool aperto() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return stream_ != nullptr;
+    }
+
+    oboe::DataCallbackResult onAudioReady(oboe::AudioStream* s, void* dati, int32_t frame) override {
+        uscita()->motore.ingresso.scrivi(static_cast<const float*>(dati), frame, s->getChannelCount(), primo_);
+        return oboe::DataCallbackResult::Continue;
+    }
+
+    // scheda scollegata: l'ingresso si chiude (l'app lo vede dallo stato e lo dice)
+    void onErrorAfterClose(oboe::AudioStream* chiuso, oboe::Result) override {
+        // se l'app sta già chiudendo (mutex occupato) non serve fare niente: e si evita di aspettarsi a vicenda
+        std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+        if (lock.owns_lock() && stream_.get() == chiuso) stream_.reset();
+    }
+
+private:
+    void chiudiSenzaLock() {
+        if (stream_) {
+            stream_->stop();
+            stream_->close();
+            stream_.reset();
+        }
+    }
+
+    std::shared_ptr<oboe::AudioStream> stream_;
+    std::mutex mutex_;
+    int primo_ = 0;
+};
+
+IngressoDvs* ingressoDvs() {
+    static IngressoDvs i;
+    return &i;
+}
+
 // Un brano in caricamento: si riempie a pezzi dal decodificatore Android, poi si analizza e si passa a un deck.
 struct Caricamento {
     djaaay::Traccia* traccia = new djaaay::Traccia();
@@ -209,6 +296,7 @@ JNIEXPORT jboolean JNICALL Java_com_toniaudio_djaaay_Motore_avvia(JNIEnv*, jobje
 }
 
 JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_ferma(JNIEnv*, jobject) {
+    ingressoDvs()->chiudi();
     uscita()->motore.registratore.ferma();
     uscita()->chiudi();
 }
@@ -347,7 +435,7 @@ JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_comando(JNIEnv*, jobject
     uscita()->motore.deck[deck].invia(c);
 }
 
-// Parametri del deck: 0 pitch, 1 frizione, 2 avvio (s), 3 frenata (s), 4 keylock (0/1)
+// Parametri del deck: 0 pitch, 1 frizione, 2 avvio (s), 3 frenata (s), 4 keylock (0/1), 5 DVS (0/1)
 JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaDeck(JNIEnv*, jobject, jint deck, jint parametro, jfloat v) {
     if (deck < 0 || deck > 1) return;
     djaaay::Deck& d = uscita()->motore.deck[deck];
@@ -357,6 +445,7 @@ JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaDeck(JNIEnv*, job
         case 2: d.avvioSecondi.store(std::clamp(v, 0.0f, 5.0f)); break;
         case 3: d.frenataSecondi.store(std::clamp(v, 0.0f, 5.0f)); break;
         case 4: d.keylock.store(v >= 0.5f); break;
+        case 5: d.dvs.store(v >= 0.5f); break;
         default: break;
     }
 }
@@ -385,6 +474,49 @@ JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaMixer(JNIEnv*, jo
         case 13: m.master.store(v); break;
         default: break;
     }
+}
+
+// --- DVS
+JNIEXPORT jstring JNICALL Java_com_toniaudio_djaaay_Motore_dvsApri(JNIEnv* env, jobject, jint deviceId, jint coppia) {
+    return env->NewStringUTF(ingressoDvs()->apri(deviceId, coppia == 1 ? 2 : 0).c_str());
+}
+
+JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_dvsChiudi(JNIEnv*, jobject) { ingressoDvs()->chiudi(); }
+
+// 0 tipo di timecode, 1 45 giri, 2 assoluta, 3 sensibilità a disco fermo, 4 protezione salto puntina,
+// 5 livello d'ingresso (dB), 6 calibra, 7 azzera
+JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaDvs(JNIEnv*, jobject, jint parametro, jfloat v) {
+    djaaay::Motore& m = uscita()->motore;
+    switch (parametro) {
+        case 0: m.timecode.impostaTipo(static_cast<int>(v)); break;  // la prima volta costruisce la tabella
+        case 1: m.timecode.giri45.store(v >= 0.5f); break;
+        case 2: m.dvsAssoluta.store(v >= 0.5f); break;
+        case 3: m.timecode.sensibilita.store(std::clamp(v, 0.0f, 1.0f)); break;
+        case 4: m.dvsProtezione.store(v >= 0.5f); break;
+        case 5: m.timecode.guadagnoDb.store(std::clamp(v, -12.0f, 24.0f)); break;
+        case 6: m.timecode.chiediCalibra.store(true); break;
+        case 7: m.timecode.chiediAzzera.store(true); break;
+        default: break;
+    }
+}
+
+// [0 qualità, 1 velocità, 2 posizione (< 0 = non nota), 3 livello d'ingresso, 4 ingresso aperto, 5 calibrato,
+//  6 canali invertiti, 7 —] poi lo scope: 256 punti (x, y)
+JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_statoDvs(JNIEnv* env, jobject, jfloatArray dest) {
+    constexpr int kPunti = djaaay::Timecode::kPuntiScope;
+    if (env->GetArrayLength(dest) < 8 + 2 * kPunti) return;
+    const djaaay::Timecode& t = uscita()->motore.timecode;
+    jfloat v[8 + 2 * kPunti];
+    v[0] = t.qualita();
+    v[1] = t.velocitaLetta();
+    v[2] = static_cast<jfloat>(t.posizioneLetta());
+    v[3] = t.livello();
+    v[4] = ingressoDvs()->aperto() ? 1.0f : 0.0f;
+    v[5] = t.calibrato() ? 1.0f : 0.0f;
+    v[6] = t.canaliInvertiti() ? 1.0f : 0.0f;
+    v[7] = 0.0f;
+    t.copiaScope(v + 8);
+    env->SetFloatArrayRegion(dest, 0, 8 + 2 * kPunti, v);
 }
 
 // Effetti del deck: 0 acceso (0/1), 1 tipo (0 echo, 1 dub, 2 reverb, 3 stretch), 6 secondi per battito;

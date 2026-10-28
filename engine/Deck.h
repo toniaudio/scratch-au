@@ -4,7 +4,7 @@
 //  - motore (Play/Stop, con tempi di avvio e frenata, pitch);
 //  - dito sul disco o sulla waveform (scratch): il disco segue la posizione del dito;
 //  - quando il dito si stacca, il disco torna alla velocità del motore con la "frizione" dello slipmat;
-//  - in futuro il timecode (DVS).
+//  - il timecode (DVS): con `dvs` acceso il disco va alla velocità del vinile timecode.
 // Tutto quello che sta in render() gira nel thread audio.
 #pragma once
 
@@ -58,6 +58,7 @@ public:
     std::atomic<float> avvioSecondi{0.15f};
     std::atomic<float> frenataSecondi{0.40f};
     std::atomic<bool> keylock{false};        // KEY: cambiando il pitch il tono resta quello originale
+    std::atomic<bool> dvs{false};            // segue il vinile timecode (velocità da render, posizione da dvsPosizione)
 
     // Letture per l'interfaccia (aggiornate a ogni blocco)
     double posizioneSecondi() const { return posizione_.load(std::memory_order_relaxed); }
@@ -67,12 +68,16 @@ public:
     double cueSecondi() const { return cueLetto_.load(std::memory_order_relaxed); }
     bool keylockInUso() const { return keylockInUso_.load(std::memory_order_relaxed); }  // false durante scratch
 
-    // Thread audio: scrive `frame` campioni stereo non interleaved in l, r.
-    void render(float* l, float* r, int frame);
+    // Thread audio: scrive `frame` campioni stereo non interleaved in l, r. `velocitaTimecode` (se il DVS è
+    // acceso) = velocità del vinile per ogni campione (1 = normale).
+    void render(float* l, float* r, int frame, const float* velocitaTimecode = nullptr);
+    // Thread audio, DVS in modalità assoluta: posizione letta dal vinile. Si salta lì quando la puntina viene
+    // appoggiata (`dopoSilenzio`) o, senza protezione, quando la puntina salta.
+    void dvsPosizione(double secondi, bool riacquisito, bool dopoSilenzio, bool protezione);
 
 private:
     static constexpr int kMaxBlocco = 256;
-    void renderBlocco(float* l, float* r, int frame);
+    void renderBlocco(float* l, float* r, int frame, const float* timecode);
     void applica(const ComandoDeck& c);
     // Sposta la puntina: breve dissolvenza dalla posizione vecchia (niente click) e il dito resta "agganciato".
     // `perKeylock`: il keylock, che legge in anticipo, deve ripartire (non serve per il giro del loop, che prevede).
