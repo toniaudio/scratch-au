@@ -387,6 +387,23 @@ JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaMixer(JNIEnv*, jo
     }
 }
 
+// Effetti del deck: 0 acceso (0/1), 1 tipo (0 echo, 1 dub, 2 reverb, 3 stretch), 6 secondi per battito;
+// per tipo `t`: 2 dry/wet, 3 parametro 1, 4 parametro 2, 5 scelta della riga in basso (indice)
+JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaFx(JNIEnv*, jobject, jint deck, jint parametro, jint t, jfloat v) {
+    if (deck < 0 || deck > 1 || t < 0 || t > 3) return;
+    djaaay::Effetto& e = uscita()->motore.effetto[deck];
+    switch (parametro) {
+        case 0: e.acceso.store(v >= 0.5f); break;
+        case 1: e.tipo.store(std::clamp(static_cast<int>(v), 0, 3)); break;
+        case 2: e.dryWet[t].store(std::clamp(v, 0.0f, 1.0f)); break;
+        case 3: e.param1[t].store(std::clamp(v, 0.0f, 1.0f)); break;
+        case 4: e.param2[t].store(std::clamp(v, 0.0f, 1.0f)); break;
+        case 5: e.scelta[t].store(static_cast<int>(v)); break;
+        case 6: e.secondiBattito.store(std::clamp(v, 0.05f, 4.0f)); break;
+        default: break;
+    }
+}
+
 // Istantanea per l'interfaccia (a ogni fotogramma), senza allocazioni:
 // per deck (×8, da 0 e da 8): posizione, durata, velocità, in play, cue, keylock in uso, livello canale, 0;
 // 16 livello master L, 17 livello master R, 18 REC attiva, 19 secondi registrati

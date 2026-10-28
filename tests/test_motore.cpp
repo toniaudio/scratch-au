@@ -771,6 +771,169 @@ static void testCacheWaveform() {
     delete t;
 }
 
+// --- Effetti ---------------------------------------------------------------------------------------------------
+
+// Passa `in` (stereo uguale sui due canali) dall'effetto a blocchi da 192; `cambia(campione)` può toccare i comandi.
+template <class F>
+static std::vector<float> passaEffetto(Effetto& e, const std::vector<float>& in, F cambia) {
+    std::vector<float> l(in), r(in);
+    for (size_t i = 0; i < in.size(); i += 192) {
+        cambia(i);
+        const int n = static_cast<int>(std::min<size_t>(192, in.size() - i));
+        e.render(l.data() + i, r.data() + i, n);
+    }
+    for (size_t i = 0; i < l.size(); ++i) l[i] = 0.5f * (l[i] + r[i]);
+    return l;
+}
+
+static float piccoTra(const std::vector<float>& v, double da, double a, double sr) {
+    float p = 0.0f;
+    for (size_t i = static_cast<size_t>(da * sr); i < std::min(v.size(), static_cast<size_t>(a * sr)); ++i)
+        p = std::max(p, std::fabs(v[i]));
+    return p;
+}
+
+static bool tuttiFiniti(const std::vector<float>& v) {
+    for (float x : v)
+        if (!std::isfinite(x)) return false;
+    return true;
+}
+
+static void testEffetti() {
+    const double sr = 48000.0;
+    // colpo a 50 ms: l'effetto acceso entra con una dissolvenza di ~15 ms
+    std::vector<float> click(static_cast<size_t>(3 * sr), 0.0f);
+    click[2400] = 1.0f;
+
+    {  // ECHO a 1 battito con battito da 0,25 s: eco a 0,25 s, poi a 0,5 s più piano
+        Effetto e;
+        e.prepara(sr);
+        e.tipo = kEcho;
+        e.scelta[kEcho] = 4;
+        e.secondiBattito = 0.25f;
+        e.param1[kEcho] = 0.5f;
+        e.dryWet[kEcho] = 1.0f;
+        e.acceso = true;
+        const auto y = passaEffetto(e, click, [](size_t) {});
+        size_t dove = 1000;
+        for (size_t i = 3000; i < static_cast<size_t>(0.45 * sr); ++i)
+            if (std::fabs(y[i]) > std::fabs(y[dove])) dove = i;
+        verifica(std::labs(static_cast<long>(dove) - static_cast<long>(0.30 * sr)) <= 2, "echo: prima eco dopo 1 battito");
+        const float p1 = piccoTra(y, 0.25, 0.35, sr), p2 = piccoTra(y, 0.5, 0.6, sr);
+        verifica(p1 > 0.3f && p2 > 0.05f && p2 < p1, "echo: la seconda eco è più piano della prima");
+        verifica(tuttiFiniti(y), "echo: nessun valore non valido");
+    }
+    {  // spento subito dopo il colpo: la coda continua (come sui mixer), ma riaccendendo dopo non torna l'eco vecchia
+        Effetto e;
+        e.prepara(sr);
+        e.tipo = kEcho;
+        e.scelta[kEcho] = 4;
+        e.secondiBattito = 0.25f;
+        e.param1[kEcho] = 0.3f;
+        e.dryWet[kEcho] = 1.0f;
+        e.acceso = true;
+        const auto y = passaEffetto(e, click, [&](size_t i) { if (i >= 9600) e.acceso = false; });
+        verifica(piccoTra(y, 0.25, 0.35, sr) > 0.3f, "echo: la coda continua dopo lo spegnimento");
+        std::vector<float> silenzio(static_cast<size_t>(sr), 0.0f);
+        passaEffetto(e, silenzio, [](size_t) {});
+        e.acceso = true;
+        const auto z = passaEffetto(e, silenzio, [](size_t) {});
+        verifica(piccoTra(z, 0.0, 1.0, sr) < 1e-4f, "echo: riaccesa, niente eco vecchia");
+    }
+    {  // spento e senza code: il suono passa identico
+        Effetto e;
+        e.prepara(sr);
+        e.dryWet[kEcho] = 0.8f;
+        std::vector<float> in(48000);
+        for (size_t i = 0; i < in.size(); ++i) in[i] = 0.5f * static_cast<float>(std::sin(0.03 * static_cast<double>(i)));
+        const auto y = passaEffetto(e, in, [](size_t) {});
+        bool uguale = true;
+        for (size_t i = 0; i < in.size(); ++i) uguale = uguale && y[i] == in[i];
+        verifica(uguale, "fx spento: il suono passa identico");
+    }
+    {  // DUB DELAY al massimo del feedback: si auto-alimenta ma resta limitato
+        Effetto e;
+        e.prepara(sr);
+        e.tipo = kDub;
+        e.scelta[kDub] = 2;
+        e.secondiBattito = 0.5f;
+        e.param1[kDub] = 1.0f;
+        e.param2[kDub] = 0.6f;
+        e.dryWet[kDub] = 1.0f;
+        e.acceso = true;
+        std::vector<float> in(static_cast<size_t>(10 * sr), 0.0f);
+        for (size_t i = 0; i < 4800; ++i) in[i] = 0.8f * static_cast<float>(std::sin(0.05 * static_cast<double>(i)));
+        const auto y = passaEffetto(e, in, [](size_t) {});
+        verifica(tuttiFiniti(y) && piccoTra(y, 0.0, 10.0, sr) < 4.0f, "dub delay: feedback al massimo limitato");
+        verifica(piccoTra(y, 9.0, 10.0, sr) > 0.01f, "dub delay: con feedback alto la coda dura");
+    }
+    {  // REVERB: dopo un colpo c'è una coda che poi si spegne
+        Effetto e;
+        e.prepara(sr);
+        e.tipo = kReverb;
+        e.param1[kReverb] = 0.5f;
+        e.scelta[kReverb] = 1;
+        e.dryWet[kReverb] = 1.0f;
+        e.acceso = true;
+        const auto y = passaEffetto(e, click, [](size_t) {});
+        const float a = piccoTra(y, 0.15, 0.35, sr), b = piccoTra(y, 2.5, 3.0, sr);
+        verifica(tuttiFiniti(y) && a > 1e-3f && b < a * 0.1f, "reverb: coda che si spegne");
+    }
+    {  // STRETCH ½×: stesso tono (440 Hz), suono continuo
+        Effetto e;
+        e.prepara(sr);
+        e.tipo = kStretch;
+        e.scelta[kStretch] = 0;
+        e.dryWet[kStretch] = 1.0f;
+        e.acceso = true;
+        std::vector<float> in(static_cast<size_t>(3 * sr));
+        for (size_t i = 0; i < in.size(); ++i) in[i] = 0.4f * static_cast<float>(std::sin(2.0 * M_PI * 440.0 * i / sr));
+        const auto y = passaEffetto(e, in, [](size_t) {});
+        std::vector<float> coda(y.begin() + static_cast<long>(1.5 * sr), y.end()), stereo;
+        for (float v : coda) {
+            stereo.push_back(v);
+            stereo.push_back(v);
+        }
+        const double f = frequenza(stereo, sr);
+        verifica(tuttiFiniti(y) && std::fabs(f - 440.0) < 8.0, "stretch ½×: stesso tono");
+        verifica(piccoTra(y, 1.5, 3.0, sr) > 0.15f, "stretch ½×: suona");
+    }
+    {  // STRETCH ⅛× con TONO +12: un'ottava sopra; tenuto 15 s (oltre la memoria di 12 s) senza problemi
+        Effetto e;
+        e.prepara(sr);
+        e.tipo = kStretch;
+        e.scelta[kStretch] = 2;
+        e.param2[kStretch] = 1.0f;
+        e.dryWet[kStretch] = 1.0f;
+        e.acceso = true;
+        std::vector<float> in(static_cast<size_t>(15 * sr));
+        for (size_t i = 0; i < in.size(); ++i) in[i] = 0.4f * static_cast<float>(std::sin(2.0 * M_PI * 300.0 * i / sr));
+        const auto y = passaEffetto(e, in, [](size_t) {});
+        std::vector<float> stereo;
+        for (size_t i = static_cast<size_t>(13 * sr); i < y.size(); ++i) {
+            stereo.push_back(y[i]);
+            stereo.push_back(y[i]);
+        }
+        verifica(tuttiFiniti(y) && std::fabs(frequenza(stereo, sr) - 600.0) < 12.0, "stretch ⅛× tono +12: un'ottava sopra, anche dopo 15 s");
+    }
+    {  // FREEZE: dopo un secondo il deck tace, ma il suono resta congelato
+        Effetto e;
+        e.prepara(sr);
+        e.tipo = kStretch;
+        e.scelta[kStretch] = 3;
+        e.dryWet[kStretch] = 1.0f;
+        std::vector<float> in(static_cast<size_t>(3 * sr), 0.0f);
+        for (size_t i = 0; i < static_cast<size_t>(1.0 * sr); ++i)
+            in[i] = 0.4f * static_cast<float>(std::sin(2.0 * M_PI * 330.0 * i / sr));
+        const auto y = passaEffetto(e, in, [&](size_t i) { if (i >= static_cast<size_t>(0.5 * sr)) e.acceso = true; });
+        verifica(tuttiFiniti(y) && piccoTra(y, 2.0, 3.0, sr) > 0.05f, "freeze: il suono resta anche col deck muto");
+        e.acceso = false;
+        std::vector<float> silenzio(static_cast<size_t>(0.5 * sr), 0.0f);
+        const auto z = passaEffetto(e, silenzio, [](size_t) {});
+        verifica(piccoTra(z, 0.2, 0.5, sr) < 1e-3f, "freeze spento: torna il deck (muto)");
+    }
+}
+
 int main() {
     testDeck();
     testCueLoop();
@@ -783,6 +946,7 @@ int main() {
     testKeylock();
     testCacheWaveform();
     testRegistrazione();
+    testEffetti();
     std::printf(errori ? "\n%d ERRORI\n" : "\ntutto ok\n", errori);
     return errori ? EXIT_FAILURE : EXIT_SUCCESS;
 }

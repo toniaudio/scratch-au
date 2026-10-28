@@ -75,10 +75,18 @@ class SchermateTest {
 
     @Test fun opzioniAudio() = foto("5-opzioni-audio") { s, c -> s.opzioniAperte = true; s.schedaOpzioni = 1; c.aggiornaDiagnostica() }
 
-    @Test fun fxEMessaggio() = foto("6-fx") { s, _ ->
+    @Test fun fx() = foto("6-fx") { s, c ->
         s.mixer.tab = 1
         s.deck[0].tabPad = 2
-        s.messaggio = "Effetti (ECHO): in arrivo nel prossimo aggiornamento"
+        s.deck[1].tabPad = 2
+        c.fxPadTocco(0, 1)  // DUB DELAY acceso sul deck A
+        c.fxTipo(1, 3)  // STRETCH scelto sul deck B, spento
+    }
+
+    @Test fun fxEchoReverb() = foto("6b-fx-echo-reverb") { s, c ->
+        s.mixer.tab = 1
+        c.fxPadTocco(0, 0)
+        c.fxPadTocco(1, 2)
     }
 
     @Test fun vuoto() = foto("7-appena-aperta") { s, _ ->

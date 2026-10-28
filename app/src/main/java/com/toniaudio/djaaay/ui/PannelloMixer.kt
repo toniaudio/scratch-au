@@ -20,7 +20,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.toniaudio.djaaay.Controllore
@@ -51,12 +50,7 @@ fun PannelloMixer(app: StatoApp, c: Controllore, modifier: Modifier = Modifier) 
                 ColonnaManopole(app, 1, c)
             }
         } else {
-            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text(
-                    "Effetti per deck (Echo, Dub Delay, Reverb, Stretch)\nin arrivo nel prossimo aggiornamento",
-                    color = Colori.Spento, fontSize = 11.sp, textAlign = TextAlign.Center,
-                )
-            }
+            PannelloFx(app, c, Modifier.weight(1f).fillMaxWidth())
         }
         // crossfader corto, lettere ai lati, sotto solo il simbolo della curva (tocco = curva successiva)
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {

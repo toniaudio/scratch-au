@@ -36,6 +36,7 @@ object Motore {
     external fun comando(deck: Int, tipo: Int, a: Double, b: Double)
     external fun impostaDeck(deck: Int, parametro: Int, valore: Float)
     external fun impostaMixer(parametro: Int, canale: Int, valore: Float)
+    external fun impostaFx(deck: Int, parametro: Int, tipo: Int, valore: Float)
     /** Istantanea per l'interfaccia, 20 valori (vedi djaaay_jni.cpp). */
     external fun stato(dest: DoubleArray)
 

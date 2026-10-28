@@ -47,6 +47,7 @@ class Controllore(
     init {
         caricaOpzioni()
         applicaOpzioni()
+        applicaFx()
         stato.permessoLibreria = piattaforma.haPermessoLibreria()
         stato.recenti = piattaforma.leggiPreferenza("recenti")?.split(',')?.mapNotNull { it.toLongOrNull() } ?: emptyList()
         stato.bpmNoti = piattaforma.leggiPreferenza("bpm")?.split(';')?.mapNotNull { voce ->
@@ -73,6 +74,7 @@ class Controllore(
         stato.mixer.livelloR = istantanea[17].toFloat()
         stato.mixer.rec = istantanea[18] > 0.5
         stato.mixer.recSecondi = istantanea[19]
+        aggiornaBattitoFx()
     }
 
     fun mostra(testo: String) {
@@ -175,7 +177,89 @@ class Controllore(
         }
     }
 
-    fun effetto(nome: String) = mostra("Effetti ($nome): in arrivo nel prossimo aggiornamento")
+    // ------------------------------------------------------------------ effetti
+    private val battitoInviato = doubleArrayOf(-1.0, -1.0)
+
+    fun fxAcceso(d: Int, acceso: Boolean) {
+        val fx = stato.deck[d].fx
+        fx.acceso = acceso
+        fx.momentaneo = false
+        ponte.impostaFx(d, ParFx.ACCESO, fx.tipo, if (acceso) 1f else 0f)
+    }
+
+    fun fxOnOff(d: Int) = fxAcceso(d, !stato.deck[d].fx.acceso)
+
+    fun fxTipo(d: Int, tipo: Int) {
+        val fx = stato.deck[d].fx
+        fx.tipo = tipo.coerceIn(0, EFFETTI.size - 1)
+        ponte.impostaFx(d, ParFx.TIPO, fx.tipo, fx.tipo.toFloat())
+    }
+
+    /** Manopole dell'effetto scelto: `quale` 0 = DRY/WET, 1 e 2 = parametri. */
+    fun fxManopola(d: Int, quale: Int, valore: Float) {
+        val fx = stato.deck[d].fx
+        val v = valore.coerceIn(0f, 1f)
+        val t = fx.tipo
+        when (quale) {
+            0 -> { fx.dryWet[t] = v; ponte.impostaFx(d, ParFx.DRY_WET, t, v) }
+            1 -> { fx.param1[t] = v; ponte.impostaFx(d, ParFx.PARAM1, t, v) }
+            else -> { fx.param2[t] = v; ponte.impostaFx(d, ParFx.PARAM2, t, v) }
+        }
+    }
+
+    /** Riga in basso (tempo, coda, rapporto): `voce` = posizione nella riga. */
+    fun fxScelta(d: Int, voce: Int) {
+        val fx = stato.deck[d].fx
+        val indici = EFFETTI[fx.tipo].indici
+        val indice = indici[voce.coerceIn(0, indici.size - 1)]
+        fx.scelta[fx.tipo] = indice
+        ponte.impostaFx(d, ParFx.SCELTA, fx.tipo, indice.toFloat())
+    }
+
+    /** Pad FX del deck: tocco = accende quell'effetto (o lo spegne se è già acceso). */
+    fun fxPadTocco(d: Int, tipo: Int) {
+        val fx = stato.deck[d].fx
+        if (fx.acceso && fx.tipo == tipo) return fxAcceso(d, false)
+        fxTipo(d, tipo)
+        fxAcceso(d, true)
+    }
+
+    /** Pad tenuto premuto: effetto acceso finché non si lascia. */
+    fun fxPadTieni(d: Int, tipo: Int) {
+        fxTipo(d, tipo)
+        fxAcceso(d, true)
+        stato.deck[d].fx.momentaneo = true
+    }
+
+    fun fxPadRilascia(d: Int) {
+        if (stato.deck[d].fx.momentaneo) fxAcceso(d, false)
+    }
+
+    /** Manda al motore tutte le regolazioni degli effetti (all'avvio). */
+    private fun applicaFx() {
+        for (d in 0..1) {
+            val fx = stato.deck[d].fx
+            for (t in EFFETTI.indices) {
+                ponte.impostaFx(d, ParFx.DRY_WET, t, fx.dryWet[t])
+                ponte.impostaFx(d, ParFx.PARAM1, t, fx.param1[t])
+                ponte.impostaFx(d, ParFx.PARAM2, t, fx.param2[t])
+                ponte.impostaFx(d, ParFx.SCELTA, t, fx.scelta[t].toFloat())
+            }
+            ponte.impostaFx(d, ParFx.TIPO, fx.tipo, fx.tipo.toFloat())
+            ponte.impostaFx(d, ParFx.ACCESO, fx.tipo, if (fx.acceso) 1f else 0f)
+        }
+    }
+
+    /** Gli echi vanno a tempo: durata di un battito come si sente (BPM del brano e pitch). */
+    private fun aggiornaBattitoFx() {
+        for (d in stato.deck) {
+            val secondi = d.battitoSecondi / (1.0 + d.pitch)
+            if (abs(secondi - battitoInviato[d.indice]) > 1e-5) {
+                battitoInviato[d.indice] = secondi
+                ponte.impostaFx(d.indice, ParFx.BATTITO, 0, secondi.toFloat())
+            }
+        }
+    }
 
     // ------------------------------------------------------------------ mixer
     fun mixer(parametro: Int, canale: Int, valore: Float) {

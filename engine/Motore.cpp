@@ -7,6 +7,7 @@ namespace djaaay {
 void Motore::prepara(double sampleRate) {
     sr_ = sampleRate;
     for (auto& d : deck) d.prepara(sampleRate);
+    for (auto& e : effetto) e.prepara(sampleRate);
     mixer.prepara(sampleRate);
 }
 
@@ -17,6 +18,8 @@ void Motore::render(float* uscita, int frame) {
         const int n = std::min(frame, kBlocco);
         deck[0].render(aL_, aR_, n);
         deck[1].render(bL_, bR_, n);
+        effetto[0].render(aL_, aR_, n);
+        effetto[1].render(bL_, bR_, n);
         mixer.render(aL_, aR_, bL_, bR_, uscita, n);
         uscita += 2 * n;
         frame -= n;

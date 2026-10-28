@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "Deck.h"
+#include "Effetti.h"
 #include "Mixer.h"
 #include "Registratore.h"
 
@@ -18,6 +19,7 @@ public:
     double sampleRate() const { return sr_; }
 
     Deck deck[2];
+    Effetto effetto[2];  // FX di ogni deck, prima del mixer
     Mixer mixer;
     Registratore registratore;  // REC: riceve l'uscita del master
 

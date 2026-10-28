@@ -11,6 +11,7 @@ class PonteFinto : Ponte {
     val comandi = mutableListOf<Comando>()
     val deck = mutableMapOf<Pair<Int, Int>, Float>()
     val mixer = mutableMapOf<Pair<Int, Int>, Float>()
+    val fx = mutableMapOf<Triple<Int, Int, Int>, Float>()  // (deck, parametro, tipo) → valore
     val istantanea = DoubleArray(20)
 
     override fun comando(deck: Int, tipo: Int, a: Double, b: Double) {
@@ -23,6 +24,10 @@ class PonteFinto : Ponte {
 
     override fun impostaMixer(parametro: Int, canale: Int, valore: Float) {
         mixer[parametro to canale] = valore
+    }
+
+    override fun impostaFx(deck: Int, parametro: Int, tipo: Int, valore: Float) {
+        fx[Triple(deck, parametro, tipo)] = valore
     }
 
     override fun stato(dest: DoubleArray) { istantanea.copyInto(dest) }

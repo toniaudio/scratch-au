@@ -8,6 +8,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /** Un brano della libreria del telefono. */
 data class Brano(
@@ -40,6 +42,49 @@ fun etichettaLoop(battute: Double): String = when (battute) {
     else -> battute.toInt().toString()
 }
 
+/** Come si presenta un effetto: nome, manopole oltre a DRY/WET, riga in basso (voci e indice nel motore). */
+class DescrizioneFx(
+    val nome: String,
+    val corto: String,
+    val parametri: List<String>,
+    val titoloRiga: String,
+    val voci: List<String>,
+    val indici: List<Int>,
+)
+
+/** I quattro effetti, nello stesso ordine di TipoEffetto in engine/Effetti.h. */
+val EFFETTI = listOf(
+    // tempi in battiti: indici di kBattute = ⅛ ¼ ½ ¾ 1 2 4
+    DescrizioneFx("ECHO", "ECHO", listOf("FEEDBACK"), "TEMPO (BATTUTE)", listOf("1/8", "1/4", "1/2", "1", "2"), listOf(0, 1, 2, 4, 5)),
+    DescrizioneFx("DUB DELAY", "DUB", listOf("FEEDBACK", "TONO"), "TEMPO (BATTUTE)", listOf("1/4", "1/2", "3/4", "1", "2"), listOf(1, 2, 3, 4, 5)),
+    DescrizioneFx("REVERB", "VERB", listOf("STANZA", "DAMP"), "CODA", listOf("corta", "media", "lunga"), listOf(0, 1, 2)),
+    DescrizioneFx("STRETCH", "STRETCH", listOf("GRANA", "TONO"), "RALLENTA · TONO FISSO", listOf("½×", "¼×", "⅛×", "FREEZE"), listOf(0, 1, 2, 3)),
+)
+
+/** Testo sotto una manopola dell'effetto: `quale` 0 = DRY/WET, 1 e 2 = parametri. */
+fun testoFx(tipo: Int, quale: Int, v: Float): String {
+    val percento = "${(v * 100).roundToInt()}%"
+    if (quale == 0) return percento
+    return when (tipo to quale) {
+        1 to 2 -> if (v < 0.35f) "scuro" else if (v > 0.65f) "brillante" else "medio"
+        2 to 1 -> if (v < 0.35f) "piccola" else if (v > 0.65f) "grande" else "media"
+        3 to 1 -> "${(10 + 110 * v).roundToInt()} ms"
+        3 to 2 -> if (abs(v - 0.5f) < 0.03f) "fisso" else "%+d st".format(((v - 0.5f) * 24).roundToInt())
+        else -> percento
+    }
+}
+
+/** Effetti di un deck. Ogni tipo ricorda le sue regolazioni (indice 0 echo, 1 dub, 2 reverb, 3 stretch). */
+class StatoFx {
+    var acceso by mutableStateOf(false)
+    var tipo by mutableIntStateOf(0)
+    val dryWet = mutableStateListOf(0.35f, 0.45f, 0.30f, 1.0f)
+    val param1 = mutableStateListOf(0.4f, 0.7f, 0.7f, 0.3f)
+    val param2 = mutableStateListOf(0f, 0.2f, 0.5f, 0.5f)
+    val scelta = mutableStateListOf(1, 3, 2, 0)  // indice nel motore (vedi DescrizioneFx.indici)
+    var momentaneo = false  // acceso tenendo premuto il pad: si spegne al rilascio
+}
+
 class StatoDeck(val indice: Int) {
     val lettera: String get() = if (indice == 0) "A" else "B"
 
@@ -68,6 +113,7 @@ class StatoDeck(val indice: Int) {
     var loopIndice by mutableIntStateOf(5)  // 4 battute
     var tabPad by mutableIntStateOf(0)  // 0 hot cue, 1 loop, 2 fx
     var libreriaAperta by mutableStateOf(false)
+    val fx = StatoFx()
 
     /** Durata di una battuta in secondi del brano (120 BPM se il tempo non è noto). */
     val battitoSecondi: Double get() = 60.0 / (if (bpm > 0) bpm else 120.0)

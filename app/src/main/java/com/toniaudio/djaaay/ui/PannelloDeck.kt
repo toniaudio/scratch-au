@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
 import com.toniaudio.djaaay.Controllore
+import com.toniaudio.djaaay.EFFETTI
 import com.toniaudio.djaaay.LUNGHEZZE_LOOP
 import com.toniaudio.djaaay.StatoApp
 import com.toniaudio.djaaay.etichettaLoop
@@ -142,8 +143,16 @@ private fun Pad(app: StatoApp, d: Int, c: Controllore) {
                 }
                 Tasto(altezza.weight(1f), onTocco = { c.loopLunghezza(d, +1) }) { Freccia(sinistra = false) }
             }
-            else -> for (nome in listOf("ECHO", "DUB", "VERB", "STRETCH")) {
-                Tasto(altezza.weight(1f), onTocco = { c.effetto(nome) }) { Etichetta(nome, Colori.Scuro, 8.sp) }
+            // tocco = accende/spegne quell'effetto; tenuto premuto = acceso finché non si lascia
+            else -> EFFETTI.forEachIndexed { t, e ->
+                val acceso = deck.fx.acceso && deck.fx.tipo == t
+                Tasto(
+                    altezza.weight(1f),
+                    bordo = if (acceso) Colori.Neutro else null,
+                    onTocco = { c.fxPadTocco(d, t) },
+                    onTieni = { c.fxPadTieni(d, t) },
+                    onRilascia = { c.fxPadRilascia(d) },
+                ) { Etichetta(e.corto, if (acceso) Colori.Testo else Colori.Scuro, 8.sp) }
             }
         }
     }

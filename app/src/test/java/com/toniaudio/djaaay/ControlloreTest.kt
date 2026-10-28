@@ -134,4 +134,43 @@ class ControlloreTest {
         assertEquals(200.0, stato.deck[1].durata, 0.0)
         assertTrue(stato.mixer.rec)
     }
+
+    @Test
+    fun padFxToccoAccendeESpegneTenutoEMomentaneo() {
+        c.fxPadTocco(0, 1)  // DUB
+        assertTrue(stato.deck[0].fx.acceso)
+        assertEquals(1, stato.deck[0].fx.tipo)
+        assertEquals(1f, ponte.fx[Triple(0, ParFx.ACCESO, 1)])
+        c.fxPadTocco(0, 1)  // stesso pad: si spegne
+        assertEquals(false, stato.deck[0].fx.acceso)
+        c.fxPadTocco(0, 1)
+        c.fxPadTocco(0, 2)  // altro pad: cambia effetto e resta acceso
+        assertEquals(2, stato.deck[0].fx.tipo)
+        assertTrue(stato.deck[0].fx.acceso)
+        c.fxPadRilascia(0)  // era un tocco, non si spegne
+        assertTrue(stato.deck[0].fx.acceso)
+        c.fxAcceso(0, false)
+        c.fxPadTieni(0, 3)  // tenuto: acceso finché non si lascia
+        assertTrue(stato.deck[0].fx.acceso)
+        c.fxPadRilascia(0)
+        assertEquals(false, stato.deck[0].fx.acceso)
+    }
+
+    @Test
+    fun fxOgniTipoRicordaLeRegolazioniEIlTempoSegueBpmEPitch() {
+        c.fxTipo(1, 0)
+        c.fxManopola(1, 1, 0.9f)  // feedback dell'echo
+        c.fxScelta(1, 3)  // quarta voce dell'echo = 1 battito (indice 4 nel motore)
+        assertEquals(4f, ponte.fx[Triple(1, ParFx.SCELTA, 0)])
+        c.fxTipo(1, 1)
+        c.fxManopola(1, 1, 0.2f)  // feedback del dub
+        assertEquals(0.9f, stato.deck[1].fx.param1[0])
+        assertEquals(0.2f, stato.deck[1].fx.param1[1])
+        carica(1, 100.0, 0.0)
+        c.impostaPitch(1, 0.05f)
+        c.aggiornaDaMotore()
+        assertEquals((0.6 / 1.05).toFloat(), ponte.fx[Triple(1, ParFx.BATTITO, 0)]!!, 1e-5f)
+        assertEquals("fisso", testoFx(3, 2, 0.5f))
+        assertEquals("+12 st", testoFx(3, 2, 1f))
+    }
 }

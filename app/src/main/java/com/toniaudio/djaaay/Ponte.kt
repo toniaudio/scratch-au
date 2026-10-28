@@ -8,6 +8,7 @@ interface Ponte {
     fun comando(deck: Int, tipo: Int, a: Double = 0.0, b: Double = 0.0)
     fun impostaDeck(deck: Int, parametro: Int, valore: Float)
     fun impostaMixer(parametro: Int, canale: Int, valore: Float)
+    fun impostaFx(deck: Int, parametro: Int, tipo: Int, valore: Float)
     fun stato(dest: DoubleArray)
 }
 
@@ -48,9 +49,21 @@ object ParMixer {
     const val MASTER = 13
 }
 
+/** Parametri di impostaFx (vedi djaaay_jni.cpp): i parametri "per tipo" valgono per l'effetto `tipo`. */
+object ParFx {
+    const val ACCESO = 0
+    const val TIPO = 1
+    const val DRY_WET = 2
+    const val PARAM1 = 3
+    const val PARAM2 = 4
+    const val SCELTA = 5
+    const val BATTITO = 6
+}
+
 object PonteNativo : Ponte {
     override fun comando(deck: Int, tipo: Int, a: Double, b: Double) = Motore.comando(deck, tipo, a, b)
     override fun impostaDeck(deck: Int, parametro: Int, valore: Float) = Motore.impostaDeck(deck, parametro, valore)
     override fun impostaMixer(parametro: Int, canale: Int, valore: Float) = Motore.impostaMixer(parametro, canale, valore)
+    override fun impostaFx(deck: Int, parametro: Int, tipo: Int, valore: Float) = Motore.impostaFx(deck, parametro, tipo, valore)
     override fun stato(dest: DoubleArray) = Motore.stato(dest)
 }
