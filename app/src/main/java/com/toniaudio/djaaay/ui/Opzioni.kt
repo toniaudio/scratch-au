@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.toniaudio.djaaay.AzioneMidi
@@ -193,9 +194,9 @@ private fun RigaInterruttore(nome: String, acceso: Boolean, onCambia: (Boolean) 
 }
 
 @Composable
-private fun RigaScelta(nome: String, voci: List<String>, scelta: Int, onScegli: (Int) -> Unit) {
+private fun RigaScelta(nome: String, voci: List<String>, scelta: Int, larghezzaVoce: Dp = 60.dp, onScegli: (Int) -> Unit) {
     Riga(nome, null) {
-        Schede(voci, scelta, onScegli, Modifier.width(60.dp * voci.size), 10.sp)
+        Schede(voci, scelta, onScegli, Modifier.width(larghezzaVoce * voci.size), 10.sp)
     }
 }
 
@@ -341,7 +342,7 @@ private fun SchedaDvs(app: StatoApp, c: Controllore) {
                 }
             }
             if (dvs.schede.size > 1) {
-                RigaScelta("Scheda", dvs.schede.map { it.nome.take(12) }, dvs.schede.indexOfFirst { it.id == dvs.scheda?.id }) {
+                RigaScelta("Scheda", dvs.schede.map { it.nome.take(12) }, dvs.schede.indexOfFirst { it.id == dvs.scheda?.id }, larghezzaVoce = 90.dp) {
                     c.dvsScegliScheda(dvs.schede[it])
                 }
             }
@@ -353,7 +354,7 @@ private fun SchedaDvs(app: StatoApp, c: Controllore) {
                 Text("%+d dB".format(dvs.guadagnoDb.roundToInt()), color = Colori.Testo, fontSize = 10.5.sp,
                     fontFamily = FontFamily.Monospace, modifier = Modifier.width(52.dp).padding(start = 6.dp))
             }
-            RigaScelta("Tipo di timecode", TIPI_TIMECODE, dvs.tipo) { c.dvsTipo(it) }
+            RigaScelta("Tipo di timecode", TIPI_TIMECODE, dvs.tipo, larghezzaVoce = 88.dp) { c.dvsTipo(it) }
             RigaScelta("Giri", listOf("33⅓", "45"), if (dvs.giri45) 1 else 0) { c.dvsGiri45(it == 1) }
             Titolo("COME SEGUE IL VINILE")
             Riga("Modalità", "assoluta = posizione del vinile; relativa = solo velocità") {
