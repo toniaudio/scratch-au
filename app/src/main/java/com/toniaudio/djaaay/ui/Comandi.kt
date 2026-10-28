@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,6 +25,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
@@ -132,8 +134,9 @@ fun Manopola(
 }
 
 /**
- * Fader verticale (volumi, pitch): si trascina il cappuccio; `centrale` disegna lo zero al centro (pitch).
- * `valore` 0…1 (1 in alto).
+ * Fader verticale (volumi, pitch) disegnato come quelli dei mixer: fessura sottile, tacche della scala ai lati,
+ * cappuccio scuro zigrinato con la linea bianca. `larghezza` è la zona da toccare (più larga del disegno).
+ * `centrale` segna lo zero al centro (pitch). `valore` 0…1 (1 in alto).
  */
 @Composable
 fun FaderVerticale(
@@ -141,7 +144,8 @@ fun FaderVerticale(
     onCambia: (Float) -> Unit,
     modifier: Modifier = Modifier,
     centrale: Boolean = false,
-    larghezza: Dp = 24.dp,
+    larghezza: Dp = 26.dp,
+    cappuccio: Dp = 20.dp,
 ) {
     val attuale by rememberUpdatedState(valore)
     val cambia by rememberUpdatedState(onCambia)
@@ -160,7 +164,7 @@ fun FaderVerticale(
                         val dy = c.position.y - y
                         y = c.position.y
                         if (dy != 0f) {
-                            v = (v - dy / (size.height - 16.dp.toPx())).coerceIn(0f, 1f)
+                            v = (v - dy / (size.height - kAltezzaCapV.toPx())).coerceIn(0f, 1f)
                             cambia(v)
                             c.consume()
                         }
@@ -169,18 +173,24 @@ fun FaderVerticale(
             }
             .pointerInput(centrale) { detectTapGestures(onDoubleTap = { if (centrale) cambia(0.5f) }) },
     ) {
-        val arrot = CornerRadius(6.dp.toPx())
-        drawRoundRect(Color(0xFF0F1219), cornerRadius = arrot)
-        drawRoundRect(Colori.Linea, cornerRadius = arrot, style = Stroke(1.dp.toPx()))
-        val margine = 8.dp.toPx()
-        drawLine(Colori.Linea, Offset(size.width / 2, margine), Offset(size.width / 2, size.height - margine), 2.dp.toPx())
-        if (centrale) {
-            drawLine(Colori.Spento, Offset(-4.dp.toPx(), size.height / 2), Offset(size.width + 4.dp.toPx(), size.height / 2), 1.dp.toPx())
+        val hCap = kAltezzaCapV.toPx()
+        val cx = size.width / 2
+        val alto = hCap / 2
+        val basso = size.height - hCap / 2
+        // tacche: 11 (lunghe a fondo corsa e a metà), ai due lati della fessura
+        val dentro = 4.dp.toPx()
+        for (i in 0..10) {
+            val ty = alto + (basso - alto) * i / 10f
+            val lunga = i == 0 || i == 5 || i == 10
+            val l = if (lunga) 5.dp.toPx() else 3.dp.toPx()
+            val col = if (centrale && i == 5) Colori.Spento else if (lunga) Colori.Scuro else Color(0xFF3A4152)
+            val sp = if (centrale && i == 5) 1.5.dp.toPx() else 1.dp.toPx()
+            drawLine(col, Offset(cx - dentro - l, ty), Offset(cx - dentro, ty), sp)
+            drawLine(col, Offset(cx + dentro, ty), Offset(cx + dentro + l, ty), sp)
         }
-        val altezzaCap = 14.dp.toPx()
-        val y = margine + (1f - valore) * (size.height - 2 * margine) - altezzaCap / 2
-        drawRoundRect(Color(0xFFD9DEE8), Offset(2.dp.toPx(), y), Size(size.width - 4.dp.toPx(), altezzaCap), CornerRadius(3.dp.toPx()))
-        drawLine(Colori.Sfondo, Offset(5.dp.toPx(), y + altezzaCap / 2), Offset(size.width - 5.dp.toPx(), y + altezzaCap / 2), 2.dp.toPx())
+        fessura(Offset(cx, alto - 3.dp.toPx()), Offset(cx, basso + 3.dp.toPx()))
+        val y = alto + (1f - valore.coerceIn(0f, 1f)) * (basso - alto)
+        cappuccioFader(Offset(cx, y), Size(cappuccio.toPx().coerceAtMost(size.width), hCap), verticale = true)
     }
 }
 
@@ -192,7 +202,7 @@ fun Crossfader(valore: Float, onCambia: (Float) -> Unit, modifier: Modifier = Mo
         modifier.pointerInput(Unit) {
             awaitEachGesture {
                 val giu = awaitFirstDown()
-                val margine = 13.dp.toPx()
+                val margine = kLarghezzaCapX.toPx() / 2
                 fun daX(x: Float) = ((x - margine) / (size.width - 2 * margine)).coerceIn(0f, 1f)
                 cambia(daX(giu.position.x))
                 do {
@@ -204,14 +214,105 @@ fun Crossfader(valore: Float, onCambia: (Float) -> Unit, modifier: Modifier = Mo
             }
         },
     ) {
-        val arrot = CornerRadius(7.dp.toPx())
-        drawRoundRect(Color(0xFF0F1219), cornerRadius = arrot)
-        drawRoundRect(Colori.Linea, cornerRadius = arrot, style = Stroke(1.dp.toPx()))
-        val margine = 13.dp.toPx()
-        drawLine(Colori.Linea, Offset(margine, size.height / 2), Offset(size.width - margine, size.height / 2), 2.dp.toPx())
-        val capL = 26.dp.toPx()
-        val x = margine + valore * (size.width - 2 * margine)
-        drawRoundRect(Color(0xFFD9DEE8), Offset(x - capL / 2, 3.dp.toPx()), Size(capL, size.height - 6.dp.toPx()), CornerRadius(3.dp.toPx()))
+        val wCap = kLarghezzaCapX.toPx()
+        val cy = size.height / 2
+        val sx = wCap / 2
+        val dx = size.width - wCap / 2
+        // tacche sopra e sotto: estremi, quarti e centro
+        val dentro = 4.dp.toPx()
+        for (i in 0..8) {
+            val tx = sx + (dx - sx) * i / 8f
+            val lunga = i % 4 == 0
+            val l = if (lunga) 4.dp.toPx() else 2.5.dp.toPx()
+            val col = if (lunga) Colori.Scuro else Color(0xFF3A4152)
+            drawLine(col, Offset(tx, cy - dentro - l), Offset(tx, cy - dentro), 1.dp.toPx())
+            drawLine(col, Offset(tx, cy + dentro), Offset(tx, cy + dentro + l), 1.dp.toPx())
+        }
+        fessura(Offset(sx - 3.dp.toPx(), cy), Offset(dx + 3.dp.toPx(), cy))
+        val x = sx + valore.coerceIn(0f, 1f) * (dx - sx)
+        cappuccioFader(Offset(x, cy), Size(wCap, size.height.coerceAtMost(26.dp.toPx())), verticale = false)
+    }
+}
+
+/** Altezza del cappuccio dei fader verticali e larghezza di quello del crossfader (nel senso della corsa). */
+private val kAltezzaCapV = 30.dp
+private val kLarghezzaCapX = 16.dp
+
+/** La fessura nera in cui scorre il cappuccio. */
+private fun DrawScope.fessura(da: Offset, a: Offset) {
+    drawLine(Color(0xFF2A3040), da, a, 5.dp.toPx(), StrokeCap.Round)
+    drawLine(Color(0xFF030406), da, a, 3.dp.toPx(), StrokeCap.Round)
+}
+
+/**
+ * Cappuccio del fader visto dall'alto: plastica scura con riflesso, zigrinatura e la linea bianca di riferimento
+ * (orizzontale nei fader verticali, verticale nel crossfader).
+ */
+private fun DrawScope.cappuccioFader(centro: Offset, dim: Size, verticale: Boolean) {
+    val tl = Offset(centro.x - dim.width / 2, centro.y - dim.height / 2)
+    val arrot = CornerRadius(3.dp.toPx())
+    // ombra
+    drawRoundRect(Color.Black.copy(alpha = 0.55f), tl + Offset(0f, 2.dp.toPx()), dim, arrot)
+    // corpo: più chiaro al centro (la sella) e più scuro verso i bordi, nel senso della corsa
+    val chiaro = Color(0xFF4B5265)
+    val scuro = Color(0xFF1C2029)
+    val sfumatura = if (verticale) {
+        Brush.verticalGradient(0f to Color(0xFF5A6176), 0.18f to scuro, 0.5f to chiaro, 0.82f to scuro, 1f to Color(0xFF14171E), startY = tl.y, endY = tl.y + dim.height)
+    } else {
+        Brush.horizontalGradient(0f to Color(0xFF5A6176), 0.18f to scuro, 0.5f to chiaro, 0.82f to scuro, 1f to Color(0xFF14171E), startX = tl.x, endX = tl.x + dim.width)
+    }
+    drawRoundRect(sfumatura, tl, dim, arrot)
+    drawRoundRect(Color(0xFF6A7287).copy(alpha = 0.6f), tl, dim, arrot, style = Stroke(0.8.dp.toPx()))
+    // zigrinatura: righe sottili perpendicolari alla corsa, lasciando libero il centro
+    val passo = 2.5.dp.toPx()
+    val bordo = 3.dp.toPx()
+    val lunghezzaCorsa = if (verticale) dim.height else dim.width
+    var t = bordo
+    while (t < lunghezzaCorsa - bordo) {
+        if (kotlin.math.abs(t - lunghezzaCorsa / 2) > 4.dp.toPx()) {
+            if (verticale) {
+                drawLine(Color.Black.copy(alpha = 0.45f), Offset(tl.x + bordo, tl.y + t), Offset(tl.x + dim.width - bordo, tl.y + t), 0.8.dp.toPx())
+            } else {
+                drawLine(Color.Black.copy(alpha = 0.45f), Offset(tl.x + t, tl.y + bordo), Offset(tl.x + t, tl.y + dim.height - bordo), 0.8.dp.toPx())
+            }
+        }
+        t += passo
+    }
+    // linea bianca di riferimento
+    if (verticale) {
+        drawLine(Color.White, Offset(tl.x + 1.5.dp.toPx(), centro.y), Offset(tl.x + dim.width - 1.5.dp.toPx(), centro.y), 2.dp.toPx())
+    } else {
+        drawLine(Color.White, Offset(centro.x, tl.y + 1.5.dp.toPx()), Offset(centro.x, tl.y + dim.height - 1.5.dp.toPx()), 2.dp.toPx())
+    }
+}
+
+/** Cursore sottile delle opzioni: linea di 3 dp e pomello tondo; si tocca o si trascina in qualsiasi punto. `valore` 0…1. */
+@Composable
+fun CursoreSottile(valore: Float, onCambia: (Float) -> Unit, modifier: Modifier = Modifier) {
+    val cambia by rememberUpdatedState(onCambia)
+    Canvas(
+        modifier.height(24.dp).pointerInput(Unit) {
+            awaitEachGesture {
+                val giu = awaitFirstDown()
+                val margine = 7.dp.toPx()
+                fun daX(x: Float) = ((x - margine) / (size.width - 2 * margine)).coerceIn(0f, 1f)
+                cambia(daX(giu.position.x))
+                do {
+                    val e = awaitPointerEvent()
+                    val c = e.changes.firstOrNull { it.id == giu.id } ?: break
+                    cambia(daX(c.position.x))
+                    c.consume()
+                } while (c.pressed)
+            }
+        },
+    ) {
+        val margine = 7.dp.toPx()
+        val cy = size.height / 2
+        val x = margine + valore.coerceIn(0f, 1f) * (size.width - 2 * margine)
+        drawLine(Colori.Linea, Offset(margine, cy), Offset(size.width - margine, cy), 3.dp.toPx(), StrokeCap.Round)
+        drawLine(Colori.Neutro, Offset(margine, cy), Offset(x, cy), 3.dp.toPx(), StrokeCap.Round)
+        drawCircle(Color.Black.copy(alpha = 0.5f), 7.dp.toPx(), Offset(x, cy + 1.dp.toPx()))
+        drawCircle(Color.White, 6.5.dp.toPx(), Offset(x, cy))
     }
 }
 

@@ -17,8 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -176,10 +174,7 @@ private fun Riga(nome: String, sotto: String?, controllo: @Composable () -> Unit
 @Composable
 private fun RigaCursore(nome: String, sotto: String, valore: Float, testo: String, onCambia: (Float) -> Unit) {
     Riga(nome, sotto) {
-        Slider(
-            valore.coerceIn(0f, 1f), onCambia, Modifier.width(150.dp),
-            colors = SliderDefaults.colors(thumbColor = Color.White, activeTrackColor = Colori.Neutro, inactiveTrackColor = Colori.Linea),
-        )
+        CursoreSottile(valore, onCambia, Modifier.width(150.dp))
         Text(testo, color = Colori.Testo, fontSize = 10.5.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.width(58.dp).padding(start = 6.dp))
     }
 }

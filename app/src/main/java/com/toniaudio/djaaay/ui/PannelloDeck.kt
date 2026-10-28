@@ -177,6 +177,7 @@ private fun ColonnaPitch(app: StatoApp, d: Int, c: Controllore) {
             onCambia = { c.impostaPitch(d, (it - 0.5f) * 2 * escursione) },
             centrale = true,
             larghezza = 30.dp,
+            cappuccio = 22.dp,
             modifier = Modifier.weight(1f),
         )
         Numero("%+.1f%%".format(deck.pitch * 100), dimensione = 10.sp)

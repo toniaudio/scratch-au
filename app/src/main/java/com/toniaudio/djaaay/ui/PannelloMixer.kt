@@ -62,7 +62,7 @@ fun PannelloMixer(app: StatoApp, c: Controllore, modifier: Modifier = Modifier) 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
             Etichetta("A", Colori.Spento, 9.sp)
             Spacer(Modifier.width(7.dp))
-            Crossfader(m.crossfader, { c.crossfader(it) }, Modifier.width(150.dp).height(20.dp))
+            Crossfader(m.crossfader, { c.crossfader(it) }, Modifier.width(150.dp).height(26.dp))
             Spacer(Modifier.width(7.dp))
             Etichetta("B", Colori.Spento, 9.sp)
         }
