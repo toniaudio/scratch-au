@@ -25,9 +25,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -77,7 +77,8 @@ fun BarraAlta(app: StatoApp, c: Controllore, modifier: Modifier = Modifier) {
 @Composable
 private fun marginiAngoli(altezza: Dp): Pair<Dp, Dp> {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return 0.dp to 0.dp
-    val display = LocalContext.current.display ?: return 0.dp to 0.dp
+    // dalla View (null se non è su uno schermo): Context.getDisplay() invece può lanciare un'eccezione
+    val display = LocalView.current.display ?: return 0.dp to 0.dp
     val densita = LocalDensity.current
     val direzione = LocalLayoutDirection.current
     val fotoS = with(densita) { WindowInsets.displayCutout.getLeft(densita, direzione).toDp() }
