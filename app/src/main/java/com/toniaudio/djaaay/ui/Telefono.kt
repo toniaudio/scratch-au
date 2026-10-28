@@ -45,7 +45,7 @@ fun CorpoTelefono(app: StatoApp, c: Controllore, modifier: Modifier = Modifier) 
         Row(modifier) {
             PannelloDeck(app, 0, c, Modifier.weight(1f))
             CentroDeck(app, c, Modifier.width(236.dp).fillMaxHeight())
-            PannelloDeck(app, 1, c, Modifier.weight(1f))
+            if (app.opzioni.unDeck) PannelloCampionatore(app, c, Modifier.weight(1f)) else PannelloDeck(app, 1, c, Modifier.weight(1f))
         }
         return
     }
@@ -87,7 +87,10 @@ private fun CentroDeck(app: StatoApp, c: Controllore, modifier: Modifier) {
                     Assegnabile(app, c, AzioneMidi.FILTRO, canale) {
                         Manopola(m.canale[canale].filtro, { c.mixer(ParMixer.FILTRO, canale, it) }, tipo = TipoManopola.Filtro, diametro = 44.dp)
                     }
-                    Etichetta("FILTRO", Colori.Spento, 9.5.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Etichetta("FILTRO", Colori.Spento, 9.5.sp)
+                        TastoCuffia(app, c, canale, Modifier.width(34.dp).height(24.dp), 13.dp)
+                    }
                     Spacer(Modifier.height(3.dp))
                     VolumeConMeter(app, c, canale, Modifier.weight(1f))
                 }
@@ -144,6 +147,21 @@ private fun MixerTelefono(app: StatoApp, c: Controllore, modifier: Modifier) {
                         Meter(m.livelloL, Modifier.width(6.dp).fillMaxHeight())
                         Meter(m.livelloR, Modifier.width(6.dp).fillMaxHeight())
                     }
+                    // cuffie: CUE/MASTER e volume
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Assegnabile(app, c, AzioneMidi.MIX_CUFFIE, 0) {
+                                Manopola(m.mixCuffie, { c.mixCuffie(it) }, diametro = 26.dp, predefinito = 0f)
+                            }
+                            Etichetta("CUE/MST", Colori.Spento, 7.5.sp)
+                        }
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Assegnabile(app, c, AzioneMidi.VOLUME_CUFFIE, 0) {
+                                Manopola(m.volumeCuffie, { c.volumeCuffie(it) }, diametro = 26.dp, predefinito = 0.8f)
+                            }
+                            IconaCuffia(Colori.Spento, 10.dp)
+                        }
+                    }
                     Tasto(Modifier.width(72.dp).height(30.dp), bordo = if (m.rec) Colori.Rec else null, onTocco = { c.rec() }) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Etichetta(if (m.rec) tempoRec(m.recSecondi) else "REC", if (m.rec) Colori.Rec else Colori.Spento, 11.sp)
@@ -174,7 +192,13 @@ private fun CanaleTelefono(app: StatoApp, c: Controllore, canale: Int, modifier:
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Etichetta("CANALE ${if (canale == 0) "A" else "B"}", Colori.Spento, 11.sp)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Etichetta(
+                if (canale == 1 && app.opzioni.unDeck) "CAMPIONATORE" else "CANALE ${if (canale == 0) "A" else "B"}",
+                Colori.Spento, 11.sp, Modifier.weight(1f),
+            )
+            TastoCuffia(app, c, canale, Modifier.width(42.dp).height(28.dp), 15.dp)
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) {
             ManopolaEtichettata(app, c, AzioneMidi.GAIN, canale, "GAIN", s.gain, 34) { c.mixer(ParMixer.GAIN, canale, it) }
             ManopolaEtichettata(app, c, AzioneMidi.ALTI, canale, "HI", s.alti, 44) { c.mixer(ParMixer.ALTI, canale, it) }
@@ -209,6 +233,13 @@ private fun PadTelefono(app: StatoApp, c: Controllore, modifier: Modifier) {
         for (d in 0..1) {
             if (d == 1) Box(Modifier.width(1.dp).fillMaxHeight().background(Colori.Linea))
             val deck = app.deck[d]
+            if (d == 1 && app.opzioni.unDeck) {
+                Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Etichetta("CAMPIONATORE", Colori.Spento, 11.sp)
+                    GrigliaCampionatore(app, c, Modifier.weight(1f).fillMaxWidth(), grande = true)
+                }
+                continue
+            }
             Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Etichetta("DECK ${deck.lettera} · HOT CUE", Colori.Spento, 11.sp)
                 Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {

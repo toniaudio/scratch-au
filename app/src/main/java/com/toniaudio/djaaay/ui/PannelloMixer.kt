@@ -94,6 +94,8 @@ private fun ColonnaManopole(app: StatoApp, canale: Int, c: Controllore) {
                 Etichetta("FILTRO", Colori.Spento, 7.5.sp)
                 Etichetta("HP", Colori.Scuro, 7.5.sp)
             }
+            Spacer(Modifier.height(4.dp))
+            TastoCuffia(app, c, canale, Modifier.width(34.dp).height(20.dp), 11.dp)
         }
     }
 }
@@ -140,6 +142,16 @@ private fun ColonnaMaster(app: StatoApp, c: Controllore) {
             Meter(m.livelloL, Modifier.width(5.dp).fillMaxHeight())
             Meter(m.livelloR, Modifier.width(5.dp).fillMaxHeight())
         }
+        // cuffie: CUE/MASTER e volume
+        Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+            Assegnabile(app, c, AzioneMidi.MIX_CUFFIE, 0) {
+                Manopola(m.mixCuffie, { c.mixCuffie(it) }, tipo = TipoManopola.Sottile, diametro = 16.dp, predefinito = 0f)
+            }
+            Assegnabile(app, c, AzioneMidi.VOLUME_CUFFIE, 0) {
+                Manopola(m.volumeCuffie, { c.volumeCuffie(it) }, tipo = TipoManopola.Sottile, diametro = 16.dp, predefinito = 0.8f)
+            }
+        }
+        IconaCuffia(Colori.Spento, 9.dp)
         // REC: tocco = avvia/ferma la registrazione del mix in Musica/DVS
         Row(
             Modifier

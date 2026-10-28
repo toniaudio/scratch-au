@@ -152,6 +152,7 @@ class StatoCanale {
     var bassi by mutableFloatStateOf(0.5f)
     var filtro by mutableFloatStateOf(0f)  // −1 passa-basso … +1 passa-alto
     var volume by mutableFloatStateOf(0.8f)
+    var cuffia by mutableStateOf(false)  // pre-ascolto
 }
 
 class StatoMixer {
@@ -165,6 +166,8 @@ class StatoMixer {
     var rec by mutableStateOf(false)
     var recSecondi by mutableDoubleStateOf(0.0)
     var tab by mutableIntStateOf(0)  // 0 mixer, 1 fx
+    var mixCuffie by mutableFloatStateOf(0f)  // 0 solo pre-ascolto … 1 solo master
+    var volumeCuffie by mutableFloatStateOf(0.8f)
 }
 
 class Opzioni {
@@ -175,6 +178,28 @@ class Opzioni {
     var scratchWaveform by mutableStateOf(true)
     var escursione by mutableIntStateOf(8)  // pitch ±8, ±16, ±50 %
     var buffer by mutableIntStateOf(2)
+    var unDeck by mutableStateOf(false)   // One Deck: deck A + campionatore al posto del deck B
+    var cuffie by mutableStateOf(false)   // pre-ascolto sulla scheda a 4 uscite (scelta salvata)
+}
+
+/** Modi dei pad del campionatore (stesso ordine di ModoPad in engine/Campionatore.h). */
+val MODI_PAD = listOf("UNA VOLTA", "LOOP", "TIENI")
+val SIMBOLI_MODO = listOf("1×", "∞", "TIENI")
+
+class StatoPad {
+    var brano by mutableStateOf<Brano?>(null)
+    var bpm by mutableDoubleStateOf(0.0)
+    var modo by mutableIntStateOf(0)
+    var suona by mutableStateOf(false)
+    var avanzamento by mutableFloatStateOf(0f)
+    var caricamento by mutableStateOf<Float?>(null)
+}
+
+class StatoCampionatore {
+    val pad = List(8) { StatoPad() }
+    var modifica by mutableStateOf(false)    // tocco su un pad = menu (cambia suono, modo, togli) invece di suonare
+    var scegliPer by mutableStateOf<Int?>(null)  // pad per cui è aperta la libreria
+    var menu by mutableStateOf<Int?>(null)       // pad di cui è aperto il menu
 }
 
 /** Una scheda audio con ingressi (per il DVS). */
@@ -210,6 +235,8 @@ class StatoDvs {
 
 class StatoApp {
     var vista by mutableIntStateOf(0)  // telefono: 0 DECK, 1 MIXER, 2 PAD, 3 FX
+    val campionatore = StatoCampionatore()
+    var cuffieAttive by mutableStateOf(false)  // uscita aperta a 4 canali sulla scheda
     val midi = StatoMidi()
     val dvs = StatoDvs()
     val deck = listOf(StatoDeck(0), StatoDeck(1))

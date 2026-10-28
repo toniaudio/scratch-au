@@ -1147,6 +1147,131 @@ static void testTimecode() {
     }
 }
 
+// --- Pre-ascolto e campionatore -----------------------------------------------------------------------------------
+
+static void testPreascolto() {
+    const double sr = 48000.0;
+    Motore m;
+    m.prepara(sr);
+    m.deck[0].carica(sinusoide(440.0, 5.0, sr, 0.5f));
+    m.deck[1].carica(sinusoide(1000.0, 5.0, sr, 0.5f));
+    m.deck[0].invia(cmd(ComandoDeck::Play, 1.0));
+    m.deck[1].invia(cmd(ComandoDeck::Play, 1.0));
+    m.mixer.crossfader = 0.0f;           // si sente solo A
+    m.mixer.canale[1].volume = 0.0f;     // B abbassato: lo si prepara in cuffia
+    m.mixer.canale[1].cuffia = true;
+    m.mixer.mixCuffie = 0.0f;            // in cuffia solo il pre-ascolto
+    m.mixer.volumeCuffie = 1.0f;
+    std::vector<float> out(48000 * 4);
+    m.render(out.data(), 24000, 4);      // si lascia partire e sfumare tutto
+    m.render(out.data(), 12000, 4);
+    std::vector<float> master, cuffie;
+    float piccoAltri = 0.0f;
+    for (int i = 0; i < 12000; ++i) {
+        master.push_back(out[static_cast<size_t>(i) * 4]);
+        master.push_back(out[static_cast<size_t>(i) * 4 + 1]);
+        cuffie.push_back(out[static_cast<size_t>(i) * 4 + 2]);
+        cuffie.push_back(out[static_cast<size_t>(i) * 4 + 3]);
+    }
+    std::vector<float> sei(12000 * 6);
+    m.render(sei.data(), 12000, 6);
+    for (int i = 0; i < 12000; ++i) piccoAltri = std::max({piccoAltri, std::fabs(sei[static_cast<size_t>(i) * 6 + 4]), std::fabs(sei[static_cast<size_t>(i) * 6 + 5])});
+    verifica(std::fabs(frequenza(master, sr) - 440.0) < 5.0, "pre-ascolto: sulle uscite 1-2 il master (deck A)");
+    verifica(std::fabs(frequenza(cuffie, sr) - 1000.0) < 5.0, "pre-ascolto: sulle uscite 3-4 il deck B col fader abbassato");
+    verifica(piccoAltri == 0.0f, "pre-ascolto: le uscite oltre la 4 restano mute");
+    m.mixer.mixCuffie = 1.0f;  // in cuffia solo il master
+    m.render(out.data(), 24000, 4);
+    std::vector<float> soloMaster;
+    for (int i = 12000; i < 24000; ++i) {
+        soloMaster.push_back(out[static_cast<size_t>(i) * 4 + 2]);
+        soloMaster.push_back(out[static_cast<size_t>(i) * 4 + 3]);
+    }
+    verifica(std::fabs(frequenza(soloMaster, sr) - 440.0) < 5.0, "pre-ascolto: CUE/MASTER tutto a destra = master in cuffia");
+    // stereo come prima: le cuffie non cambiano niente
+    std::vector<float> stereo(24000);
+    m.render(stereo.data(), 12000);
+    verifica(tuttiFiniti(stereo), "pre-ascolto: uscita stereo normale");
+}
+
+static Traccia* clic(double sr, double secondi) {
+    auto* t = new Traccia();
+    t->sampleRate = sr;
+    std::vector<int16_t> buf(static_cast<size_t>(secondi * sr) * 2, 0);
+    for (size_t i = 0; i < 200; ++i) buf[i * 2] = buf[i * 2 + 1] = 20000;  // colpo all'inizio
+    t->aggiungi(buf.data(), static_cast<int64_t>(buf.size() / 2), 2);
+    return t;
+}
+
+static void testCampionatore() {
+    const double sr = 48000.0;
+    Campionatore c;
+    c.prepara(sr);
+    c.carica(0, sinusoide(500.0, 0.25, sr, 0.5f));  // suono corto
+    c.carica(1, clic(sr, 0.5));                   // loop di mezzo secondo con un colpo all'inizio
+    c.carica(2, sinusoide(300.0, 2.0, sr, 0.5f));
+    c.modo[1] = kLoopPad;
+    c.modo[2] = kTieni;
+    auto gira = [&](int frame) {
+        std::vector<float> l(static_cast<size_t>(frame), 0.0f), r(static_cast<size_t>(frame), 0.0f);
+        for (int i = 0; i < frame; i += 256) c.render(l.data() + i, r.data() + i, std::min(256, frame - i));
+        return l;
+    };
+    auto premi = [&](int pad, ComandoCampionatore::Tipo t = ComandoCampionatore::Premi) {
+        ComandoCampionatore k;
+        k.tipo = t;
+        k.pad = pad;
+        c.invia(k);
+    };
+    // UNA VOLTA: suona e finisce da solo
+    premi(0);
+    auto y = gira(24000);
+    verifica(piccoTra(y, 0.05, 0.2, sr) > 0.3f && piccoTra(y, 0.3, 0.5, sr) == 0.0f, "campionatore: una volta suona e finisce");
+    // LOOP: riparte da solo finché non si ritocca
+    premi(1);
+    y = gira(96000);
+    int colpi = 0;
+    for (size_t i = 1; i < y.size(); ++i)
+        if (y[i] > 0.3f && y[i - 1] <= 0.3f) ++colpi;
+    verifica(colpi == 4 && c.suona(1), "campionatore: loop di 0,5 s in 2 s = 4 giri");
+    premi(1);
+    y = gira(24000);
+    verifica(!c.suona(1) && piccoTra(y, 0.05, 0.5, sr) == 0.0f, "campionatore: ritoccato il loop si spegne");
+    // TIENI: suona finché il pad è premuto, poi sfuma in pochi ms
+    premi(2);
+    y = gira(12000);
+    verifica(c.suona(2) && piccoTra(y, 0.1, 0.25, sr) > 0.3f, "campionatore: tieni suona mentre è premuto");
+    premi(2, ComandoCampionatore::Lascia);
+    y = gira(4800);
+    verifica(!c.suona(2) && piccoTra(y, 0.02, 0.1, sr) == 0.0f, "campionatore: lasciato il pad tace subito (8 ms)");
+    // ripartenza senza click: il salto tra un campione e l'altro resta piccolo
+    c.modo[2] = kUnaVolta;
+    premi(2);
+    gira(4800);
+    premi(2);
+    y = gira(4800);
+    float salto = 0.0f;
+    for (size_t i = 1; i < y.size(); ++i) salto = std::max(salto, std::fabs(y[i] - y[i - 1]));
+    verifica(salto < 0.1f, "campionatore: ripartire non fa click");
+    // nel motore va sul canale B: col crossfader tutto su A non si sente
+    Motore m;
+    m.prepara(sr);
+    m.campionatore.carica(0, sinusoide(500.0, 1.0, sr, 0.5f));
+    ComandoCampionatore k;
+    k.pad = 0;
+    m.campionatore.invia(k);
+    m.mixer.crossfader = 0.0f;
+    std::vector<float> out(24000 * 2);
+    m.render(out.data(), 24000);
+    float picco = 0.0f;  // dopo 50 ms: il crossfader ci mette 1 ms ad arrivare in posizione
+    for (size_t i = 4800; i < out.size(); ++i) picco = std::max(picco, std::fabs(out[i]));
+    m.campionatore.invia(k);
+    m.mixer.crossfader = 1.0f;
+    m.render(out.data(), 24000);
+    float piccoB = 0.0f;
+    for (size_t i = 4800; i < out.size(); ++i) piccoB = std::max(piccoB, std::fabs(out[i]));
+    verifica(picco < 1e-4f && piccoB > 0.1f, "campionatore: suona sul canale B (taglio col crossfader)");
+}
+
 int main() {
     testDeck();
     testCueLoop();
@@ -1161,6 +1286,8 @@ int main() {
     testRegistrazione();
     testEffetti();
     testTimecode();
+    testPreascolto();
+    testCampionatore();
     std::printf(errori ? "\n%d ERRORI\n" : "\ntutto ok\n", errori);
     return errori ? EXIT_FAILURE : EXIT_SUCCESS;
 }

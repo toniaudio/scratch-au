@@ -215,5 +215,20 @@ class PiattaformaAndroid(
 
     override fun apriIngresso(id: Int, coppia: Int): String = Motore.dvsApri(id, coppia)
 
+    // ------------------------------------------------------------------ pre-ascolto e campionatore
+    override fun schedeUscita(): List<SchedaAudio> {
+        val audio = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val usb = setOf(AudioDeviceInfo.TYPE_USB_DEVICE, AudioDeviceInfo.TYPE_USB_HEADSET, AudioDeviceInfo.TYPE_USB_ACCESSORY)
+        return audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            .filter { it.type in usb }
+            .map { d -> SchedaAudio(d.id, d.productName?.toString()?.ifBlank { null } ?: "Scheda audio", d.channelCounts.maxOrNull() ?: 2, true) }
+            // lista dei canali vuota = qualsiasi numero: si prova
+            .filter { it.canali >= 4 || audio.getDevices(AudioManager.GET_DEVICES_OUTPUTS).first { d -> d.id == it.id }.channelCounts.isEmpty() }
+    }
+
+    override fun apriCuffie(attiva: Boolean, id: Int): String = Motore.uscitaCuffie(attiva, id)
+
+    override fun mettiNelCampionatore(caricato: BranoCaricato, pad: Int) = Motore.caricaNelCampionatore(caricato.handle, pad)
+
     override fun chiudiIngresso() = Motore.dvsChiudi()
 }

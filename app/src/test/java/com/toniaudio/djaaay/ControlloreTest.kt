@@ -338,4 +338,64 @@ class ControlloreTest {
         c.fxTrackpadSu(0)
         assertTrue(stato.deck[0].fx.acceso)
     }
+
+    @Test
+    fun preascoltoConLaSchedaA4Uscite() {
+        c.cuffia(1)
+        assertEquals(1f, ponte.mixer[ParMixer.CUFFIA to 1])
+        assertTrue(stato.messaggio!!.contains("4 uscite"))  // senza scheda attiva lo dice
+        c.attivaCuffie(true)
+        assertEquals(true to 9, piattaforma.cuffie)
+        assertTrue(stato.cuffieAttive)
+        c.mixCuffie(0.3f)
+        assertEquals(0.3f, ponte.mixer[ParMixer.MIX_CUFFIE to 0])
+        // scheda scollegata: il motore torna stereo e l'app se ne accorge
+        ponte.istantanea[36] = 2.0
+        c.aggiornaDaMotore()
+        assertEquals(false, stato.cuffieAttive)
+        assertTrue(stato.opzioni.cuffie)  // la scelta resta: alla prossima scheda si riattiva
+        c.dvsAggiornaSchede()
+        assertTrue(stato.cuffieAttive)
+        // senza schede a 4 uscite non si attiva
+        c.attivaCuffie(false)
+        piattaforma.schedeUscita = emptyList()
+        c.attivaCuffie(true)
+        assertEquals(false, stato.cuffieAttive)
+    }
+
+    @Test
+    fun oneDeckECampionatore() {
+        carica(1, 120.0, 0.0)
+        stato.deck[1].inPlay = true
+        c.unDeck(true)
+        assertEquals(Cmd.PLAY, ponte.comandi.last().tipo)  // il deck B si ferma
+        assertEquals(0.0, ponte.comandi.last().a, 0.0)
+        // pad vuoto: si apre la libreria per lui; scelto un brano, il pad si riempie
+        piattaforma.brani = listOf(branoFinto(5L, "Boom Bap Loop", "", 8))
+        c.padCampione(2)
+        assertEquals(2, stato.campionatore.scegliPer)
+        c.caricaCampione(2, piattaforma.brani[0])
+        assertEquals("Boom Bap Loop", stato.campionatore.pad[2].brano?.titolo)
+        assertEquals(5L to 2, piattaforma.nelCampionatore.last())
+        assertNull(stato.campionatore.scegliPer)
+        // pad pieno: suona (premi e lascia)
+        c.padCampione(2)
+        c.padCampioneRilascia(2)
+        assertEquals(listOf(CmdCampione.PREMI, CmdCampione.LASCIA), ponte.campioni.takeLast(2).map { it.first })
+        // MODIFICA: il tocco apre il menu; modo loop, salvato e ricaricato
+        c.modificaCampionatore()
+        c.padCampione(2)
+        assertEquals(2, stato.campionatore.menu)
+        c.campioneModo(2, 1)
+        assertEquals(Triple(CmdCampione.MODO, 2, 1), ponte.campioni.last())
+        val altro = Controllore(StatoApp(), PonteFinto(), piattaforma, CoroutineScope(Dispatchers.Unconfined))
+        assertTrue(altro.stato.opzioni.unDeck)
+        assertEquals(1, altro.stato.campionatore.pad[2].modo)
+        altro.aggiornaLibreria()  // letta la libreria il suono torna nel suo pad
+        assertEquals("Boom Bap Loop", altro.stato.campionatore.pad[2].brano?.titolo)
+        // togli
+        c.campioneTogli(2)
+        assertNull(stato.campionatore.pad[2].brano)
+        assertEquals(CmdCampione.TOGLI, ponte.campioni.last().first)
+    }
 }

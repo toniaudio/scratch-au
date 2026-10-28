@@ -69,7 +69,10 @@ private fun UnitaFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier, g
         verticalArrangement = Arrangement.spacedBy(if (grande) 5.dp else 3.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Etichetta("FX · DECK ${app.deck[d].lettera}", Colori.Testo, if (grande) 12.sp else 8.5.sp)
+            Etichetta(
+                if (d == 1 && app.opzioni.unDeck) "FX · CAMPIONATORE" else "FX · DECK ${app.deck[d].lettera}",
+                Colori.Testo, if (grande) 12.sp else 8.5.sp,
+            )
             Spacer(Modifier.weight(1f))
             // PAD: trackpad al posto delle manopole (l'effetto si accende dai pad FX del deck o toccando il trackpad)
             Tasto(Modifier.width(if (grande) 58.dp else 30.dp).height(if (grande) 28.dp else 16.dp), acceso = fx.padAperto, onTocco = { c.fxPad(d) }) {

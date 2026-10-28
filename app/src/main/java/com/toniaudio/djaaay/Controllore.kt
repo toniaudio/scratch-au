@@ -37,6 +37,13 @@ interface Piattaforma {
     /** "" se l'ingresso è aperto, altrimenti il problema. `coppia` 0 = ingressi 1-2, 1 = 3-4. */
     fun apriIngresso(id: Int, coppia: Int): String
     fun chiudiIngresso()
+
+    // Pre-ascolto: schede con almeno 4 uscite; "" = uscita aperta a 4 canali (o tornata stereo)
+    fun schedeUscita(): List<SchedaAudio>
+    fun apriCuffie(attiva: Boolean, id: Int): String
+
+    // Campionatore (One Deck)
+    fun mettiNelCampionatore(caricato: BranoCaricato, pad: Int)
 }
 
 /**
@@ -49,7 +56,10 @@ class Controllore(
     private val piattaforma: Piattaforma,
     private val scope: CoroutineScope,
 ) {
-    private val istantanea = DoubleArray(20)
+    private val istantanea = DoubleArray(37)
+    // usati già nell'init (caricaCampionatore): vanno dichiarati prima
+    private var campionatoreRipristinato = false
+    private val campioniSalvati = arrayOfNulls<Long>(8)
     private val caricamenti = arrayOfNulls<Job>(2)
 
     init {
@@ -59,6 +69,8 @@ class Controllore(
         caricaMidi()
         caricaDvs()
         applicaDvs()
+        caricaCampionatore()
+        if (stato.opzioni.cuffie) attivaCuffie(true, silenzioso = true)
         stato.permessoLibreria = piattaforma.haPermessoLibreria()
         stato.recenti = piattaforma.leggiPreferenza("recenti")?.split(',')?.mapNotNull { it.toLongOrNull() } ?: emptyList()
         stato.bpmNoti = piattaforma.leggiPreferenza("bpm")?.split(';')?.mapNotNull { voce ->
@@ -85,6 +97,15 @@ class Controllore(
         stato.mixer.livelloR = istantanea[17].toFloat()
         stato.mixer.rec = istantanea[18] > 0.5
         stato.mixer.recSecondi = istantanea[19]
+        for ((i, p) in stato.campionatore.pad.withIndex()) {
+            p.suona = istantanea[20 + i] > 0.5
+            p.avanzamento = istantanea[28 + i].toFloat()
+        }
+        if (stato.cuffieAttive && istantanea[36] < 3.5) {
+            // l'uscita è tornata stereo da sola: scheda scollegata
+            stato.cuffieAttive = false
+            mostra("Pre-ascolto: la scheda audio è stata scollegata")
+        }
         aggiornaBattitoFx()
         aggiornaDvs()
     }
@@ -392,7 +413,10 @@ class Controllore(
     fun aggiornaLibreria() {
         stato.permessoLibreria = piattaforma.haPermessoLibreria()
         if (!stato.permessoLibreria) return
-        scope.launch { stato.libreria = piattaforma.leggiLibreria() }
+        scope.launch {
+            stato.libreria = piattaforma.leggiLibreria()
+            ripristinaCampionatore()
+        }
     }
 
     fun caricaBrano(d: Int, brano: Brano) {
@@ -500,6 +524,12 @@ class Controllore(
             AzioneMidi.FX_DRY_WET -> fxManopola(d, 0, v)
             AzioneMidi.FX_PARAM1 -> fxManopola(d, 1, v)
             AzioneMidi.FX_PARAM2 -> fxManopola(d, 2, v)
+            AzioneMidi.MIX_CUFFIE -> mixCuffie(v)
+            AzioneMidi.VOLUME_CUFFIE -> volumeCuffie(v)
+            in AZIONI_CAMPIONE -> {
+                val pad = AZIONI_CAMPIONE.indexOf(a.azione)
+                if (pressione) padCampione(pad) else if (!premuto && eraPremuto) padCampioneRilascia(pad)
+            }
             AzioneMidi.LIB_SCORRI -> if (prima != null && valore != prima) libreriaSposta(d, if (valore > prima) 1 else -1)
             AzioneMidi.CUE -> if (pressione) cueGiu(d) else if (!premuto && eraPremuto) cueSu(d)
             else -> if (pressione) when (a.azione) {
@@ -525,6 +555,7 @@ class Controllore(
                 AzioneMidi.LIB_SU -> libreriaSposta(d, -1)
                 AzioneMidi.LIB_GIU -> libreriaSposta(d, +1)
                 AzioneMidi.LIB_CARICA -> libreriaCarica(d)
+                AzioneMidi.CUFFIA -> cuffia(d)
                 else -> Unit
             }
         }
@@ -670,6 +701,8 @@ class Controllore(
 
     /** Schede collegate o scollegate (e all'apertura della scheda DVS delle opzioni). */
     fun dvsAggiornaSchede() {
+        // pre-ascolto scelto ma senza scheda: appena ne arriva una si riprova
+        if (stato.opzioni.cuffie && !stato.cuffieAttive) attivaCuffie(true, silenzioso = true)
         val dvs = stato.dvs
         dvs.schede = if (piattaforma.haPermessoIngresso()) piattaforma.schedeIngresso() else emptyList()
         val s = dvs.scheda
@@ -804,6 +837,170 @@ class Controllore(
         d.protezione = v[6] > 0.5f
     }
 
+    // ------------------------------------------------------------------ pre-ascolto
+    /** Tasto cuffia del canale: lo si ascolta in cuffia (prima del fader). */
+    fun cuffia(canale: Int) {
+        val c = stato.mixer.canale[canale]
+        c.cuffia = !c.cuffia
+        ponte.impostaMixer(ParMixer.CUFFIA, canale, if (c.cuffia) 1f else 0f)
+        if (c.cuffia && !stato.cuffieAttive) mostra("Il pre-ascolto si sente con una scheda audio a 4 uscite: Opzioni › Audio")
+    }
+
+    fun mixCuffie(v: Float) {
+        stato.mixer.mixCuffie = v.coerceIn(0f, 1f)
+        ponte.impostaMixer(ParMixer.MIX_CUFFIE, 0, stato.mixer.mixCuffie)
+    }
+
+    fun volumeCuffie(v: Float) {
+        stato.mixer.volumeCuffie = v.coerceIn(0f, 1f)
+        ponte.impostaMixer(ParMixer.VOLUME_CUFFIE, 0, stato.mixer.volumeCuffie)
+    }
+
+    /** Pre-ascolto sulla scheda: master sulle uscite 1-2, cuffie sulle 3-4. */
+    fun attivaCuffie(acceso: Boolean, silenzioso: Boolean = false) {
+        if (!acceso) {
+            stato.opzioni.cuffie = false
+            if (stato.cuffieAttive) piattaforma.apriCuffie(false, 0)
+            stato.cuffieAttive = false
+            return salvaOpzioni()
+        }
+        stato.opzioni.cuffie = true
+        salvaOpzioni()
+        val scheda = piattaforma.schedeUscita().firstOrNull()
+        if (scheda == null) {
+            if (!silenzioso) mostra("Pre-ascolto: collega una scheda audio USB con 4 uscite")
+            return
+        }
+        val errore = piattaforma.apriCuffie(true, scheda.id)
+        if (errore.isNotEmpty()) {
+            if (!silenzioso) mostra("Pre-ascolto: $errore")
+            return
+        }
+        stato.cuffieAttive = true
+        ponte.impostaMixer(ParMixer.MIX_CUFFIE, 0, stato.mixer.mixCuffie)
+        ponte.impostaMixer(ParMixer.VOLUME_CUFFIE, 0, stato.mixer.volumeCuffie)
+        if (!silenzioso) mostra("Pre-ascolto attivo su ${scheda.nome}: casse sulle uscite 1-2, cuffie sulle 3-4")
+    }
+
+    // ------------------------------------------------------------------ One Deck e campionatore
+    /** One Deck: deck A + campionatore al posto del deck B. */
+    fun unDeck(acceso: Boolean) {
+        stato.opzioni.unDeck = acceso
+        if (acceso) {
+            val b = stato.deck[1]
+            if (b.inPlay) ponte.comando(1, Cmd.PLAY, 0.0)
+            if (b.dvs) dvs(1)
+            b.libreriaAperta = false
+        } else {
+            ponte.campionatore(CmdCampione.FERMA, 0)
+            stato.campionatore.scegliPer = null
+            stato.campionatore.menu = null
+        }
+        salvaOpzioni()
+    }
+
+    /** Pad premuto: vuoto = sceglie il suono; in MODIFICA = menu del pad; altrimenti suona. */
+    fun padCampione(i: Int) {
+        val camp = stato.campionatore
+        val pad = camp.pad[i]
+        when {
+            pad.brano == null -> if (pad.caricamento == null) apriSceltaCampione(i)
+            camp.modifica -> camp.menu = i
+            else -> ponte.campionatore(CmdCampione.PREMI, i)
+        }
+    }
+
+    fun padCampioneRilascia(i: Int) {
+        val camp = stato.campionatore
+        if (camp.pad[i].brano != null && !camp.modifica) ponte.campionatore(CmdCampione.LASCIA, i)
+    }
+
+    fun modificaCampionatore() {
+        val camp = stato.campionatore
+        camp.modifica = !camp.modifica
+        if (!camp.modifica) camp.menu = null
+    }
+
+    fun fermaCampionatore() = ponte.campionatore(CmdCampione.FERMA, 0)
+
+    fun apriSceltaCampione(i: Int) {
+        val camp = stato.campionatore
+        camp.menu = null
+        camp.scegliPer = i
+        if (!piattaforma.haPermessoLibreria()) piattaforma.chiediPermessoLibreria() else aggiornaLibreria()
+    }
+
+    fun chiudiSceltaCampione() {
+        stato.campionatore.scegliPer = null
+    }
+
+    fun campioneModo(i: Int, modo: Int) {
+        val pad = stato.campionatore.pad[i]
+        pad.modo = modo.coerceIn(0, MODI_PAD.size - 1)
+        ponte.campionatore(CmdCampione.MODO, i, pad.modo)
+        salvaCampionatore()
+    }
+
+    fun campioneTogli(i: Int) {
+        val pad = stato.campionatore.pad[i]
+        ponte.campionatore(CmdCampione.TOGLI, i)
+        pad.brano = null
+        pad.bpm = 0.0
+        stato.campionatore.menu = null
+        salvaCampionatore()
+    }
+
+    /** Un brano della libreria va nel pad `i` (decodificato e analizzato come per i deck). */
+    fun caricaCampione(i: Int, brano: Brano) {
+        val pad = stato.campionatore.pad[i]
+        stato.campionatore.scegliPer = null
+        pad.caricamento = 0f
+        scope.launch {
+            val caricato = try {
+                piattaforma.carica(brano) { pad.caricamento = it }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                pad.caricamento = null
+                return@launch mostra("Non riesco a leggere \"${brano.titolo}\" (${e.message ?: "formato non supportato"})")
+            }
+            piattaforma.mettiNelCampionatore(caricato, i)
+            ponte.campionatore(CmdCampione.MODO, i, pad.modo)
+            pad.brano = brano
+            pad.bpm = caricato.bpm
+            pad.caricamento = null
+            salvaCampionatore()
+        }
+    }
+
+    private fun salvaCampionatore() {
+        piattaforma.salvaPreferenza(
+            "campionatore",
+            stato.campionatore.pad.joinToString(";") { "${it.brano?.id ?: -1}:${it.modo}" },
+        )
+    }
+
+    private fun caricaCampionatore() {
+        val voci = piattaforma.leggiPreferenza("campionatore")?.split(';') ?: return
+        for ((i, voce) in voci.take(8).withIndex()) {
+            val parti = voce.split(':')
+            campioniSalvati[i] = parti.getOrNull(0)?.toLongOrNull()?.takeIf { it >= 0 }
+            val modo = parti.getOrNull(1)?.toIntOrNull()?.coerceIn(0, MODI_PAD.size - 1) ?: 0
+            stato.campionatore.pad[i].modo = modo
+            ponte.campionatore(CmdCampione.MODO, i, modo)
+        }
+    }
+
+    /** Dopo aver letto la libreria: i suoni del campionatore della volta prima tornano nei loro pad. */
+    private fun ripristinaCampionatore() {
+        if (campionatoreRipristinato || stato.libreria.isEmpty()) return
+        campionatoreRipristinato = true
+        for ((i, id) in campioniSalvati.withIndex()) {
+            val brano = stato.libreria.firstOrNull { it.id == id } ?: continue
+            if (stato.campionatore.pad[i].brano == null) caricaCampione(i, brano)
+        }
+    }
+
     // ------------------------------------------------------------------ opzioni
     fun apriOpzioni() {
         stato.opzioniAperte = true
@@ -848,7 +1045,8 @@ class Controllore(
         piattaforma.salvaPreferenza(
             "opzioni",
             listOf(o.frizione, o.avvio, o.frenata, o.sensibilita, if (o.scratchWaveform) 1f else 0f, o.escursione.toFloat(),
-                o.buffer.toFloat(), stato.mixer.curva.toFloat(), if (stato.mixer.inverti) 1f else 0f).joinToString(","),
+                o.buffer.toFloat(), stato.mixer.curva.toFloat(), if (stato.mixer.inverti) 1f else 0f,
+                if (o.unDeck) 1f else 0f, if (o.cuffie) 1f else 0f).joinToString(","),
         )
     }
 
@@ -865,6 +1063,10 @@ class Controllore(
         o.buffer = v[6].toInt()
         stato.mixer.curva = v[7].toInt()
         stato.mixer.inverti = v[8] > 0.5f
+        if (v.size >= 11) {
+            o.unDeck = v[9] > 0.5f
+            o.cuffie = v[10] > 0.5f
+        }
     }
 
     companion object {

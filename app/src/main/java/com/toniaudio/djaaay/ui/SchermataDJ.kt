@@ -52,7 +52,8 @@ private fun Corpo(app: StatoApp, c: Controllore, telefono: Boolean) {
             BarraAlta(app, c)
             Box(Modifier.fillMaxWidth().height(if (telefono) 100.dp else 132.dp)) {
                 Column(Modifier.fillMaxSize()) {
-                    for (d in 0..1) {
+                    // One Deck: solo la waveform del deck A, alta il doppio
+                    for (d in if (app.opzioni.unDeck) 0..0 else 0..1) {
                         WaveformDeck(
                             app.deck[d], app.zoomSecondi, app.opzioni.scratchWaveform,
                             onZoom = { app.zoomSecondi = it },
@@ -75,7 +76,8 @@ private fun Corpo(app: StatoApp, c: Controllore, telefono: Boolean) {
                 Row(Modifier.weight(1f).fillMaxWidth()) {
                     PannelloDeck(app, 0, c, Modifier.weight(0.33f))
                     PannelloMixer(app, c, Modifier.weight(0.34f))
-                    PannelloDeck(app, 1, c, Modifier.weight(0.33f))
+                    if (app.opzioni.unDeck) PannelloCampionatore(app, c, Modifier.weight(0.33f))
+                    else PannelloDeck(app, 1, c, Modifier.weight(0.33f))
                 }
             }
         }

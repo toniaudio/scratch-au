@@ -12,7 +12,8 @@ class PonteFinto : Ponte {
     val deck = mutableMapOf<Pair<Int, Int>, Float>()
     val mixer = mutableMapOf<Pair<Int, Int>, Float>()
     val fx = mutableMapOf<Triple<Int, Int, Int>, Float>()  // (deck, parametro, tipo) → valore
-    val istantanea = DoubleArray(20)
+    val istantanea = DoubleArray(37).also { it[36] = 2.0 }
+    val campioni = mutableListOf<Triple<Int, Int, Int>>()  // (tipo, pad, valore)
 
     override fun comando(deck: Int, tipo: Int, a: Double, b: Double) {
         comandi += Comando(deck, tipo, a, b)
@@ -32,6 +33,10 @@ class PonteFinto : Ponte {
 
     val dvs = mutableMapOf<Int, Float>()
     val istantaneaDvs = FloatArray(8 + 2 * StatoDvs.PUNTI_SCOPE)
+
+    override fun campionatore(tipo: Int, pad: Int, valore: Int) {
+        campioni += Triple(tipo, pad, valore)
+    }
 
     override fun impostaDvs(parametro: Int, valore: Float) {
         dvs[parametro] = valore
@@ -71,6 +76,17 @@ class PiattaformaFinta(var brani: List<Brano> = emptyList()) : Piattaforma {
     }
     override fun chiudiIngresso() {
         ingressoAperto = null
+    }
+    var schedeUscita = listOf(SchedaAudio(9, "Behringer UMC404HD", 4, true))
+    var cuffie: Pair<Boolean, Int>? = null
+    val nelCampionatore = mutableListOf<Pair<Long, Int>>()
+    override fun schedeUscita() = schedeUscita
+    override fun apriCuffie(attiva: Boolean, id: Int): String {
+        cuffie = attiva to id
+        return ""
+    }
+    override fun mettiNelCampionatore(caricato: BranoCaricato, pad: Int) {
+        nelCampionatore += caricato.handle to pad
     }
     override fun avviaRec(): String? = "DVS-prova.wav".also { rec = true }
     override fun fermaRec() {

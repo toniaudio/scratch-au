@@ -43,8 +43,15 @@ object Motore {
     external fun dvsChiudi()
     external fun impostaDvs(parametro: Int, valore: Float)
     external fun statoDvs(dest: FloatArray)
-    /** Istantanea per l'interfaccia, 20 valori (vedi djaaay_jni.cpp). */
+    /** Istantanea per l'interfaccia, 37 valori (vedi djaaay_jni.cpp). */
     external fun stato(dest: DoubleArray)
+
+    /** Pre-ascolto: uscita a 4 canali sulla scheda (master 1-2, cuffie 3-4) o di nuovo stereo. "" = fatto. */
+    external fun uscitaCuffie(attiva: Boolean, deviceId: Int): String
+
+    /** Campionatore: tipo 0 premi, 1 lascia, 2 togli, 3 modo (valore), 4 ferma tutti. */
+    external fun campionatore(tipo: Int, pad: Int, valore: Int)
+    external fun caricaNelCampionatore(handle: Long, pad: Int)
 
     /** Il motore diventa proprietario del file descriptor e lo chiude sempre. */
     external fun avviaRegistrazione(fd: Int): Boolean

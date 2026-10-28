@@ -9,6 +9,7 @@ interface Ponte {
     fun impostaDeck(deck: Int, parametro: Int, valore: Float)
     fun impostaMixer(parametro: Int, canale: Int, valore: Float)
     fun impostaFx(deck: Int, parametro: Int, tipo: Int, valore: Float)
+    fun campionatore(tipo: Int, pad: Int, valore: Int = 0)
     fun impostaDvs(parametro: Int, valore: Float)
     /** 8 valori (vedi djaaay_jni.cpp) e poi lo scope: 256 punti (x, y). */
     fun statoDvs(dest: FloatArray)
@@ -59,10 +60,22 @@ object ParMixer {
     const val BASSI = 3
     const val FILTRO = 4
     const val VOLUME = 5
+    const val CUFFIA = 6
     const val CROSSFADER = 10
     const val CURVA = 11
     const val INVERTI = 12
     const val MASTER = 13
+    const val MIX_CUFFIE = 14
+    const val VOLUME_CUFFIE = 15
+}
+
+/** Comandi del campionatore. */
+object CmdCampione {
+    const val PREMI = 0
+    const val LASCIA = 1
+    const val TOGLI = 2
+    const val MODO = 3
+    const val FERMA = 4
 }
 
 /** Parametri di impostaFx (vedi djaaay_jni.cpp): i parametri "per tipo" valgono per l'effetto `tipo`. */
@@ -81,6 +94,7 @@ object PonteNativo : Ponte {
     override fun impostaDeck(deck: Int, parametro: Int, valore: Float) = Motore.impostaDeck(deck, parametro, valore)
     override fun impostaMixer(parametro: Int, canale: Int, valore: Float) = Motore.impostaMixer(parametro, canale, valore)
     override fun impostaFx(deck: Int, parametro: Int, tipo: Int, valore: Float) = Motore.impostaFx(deck, parametro, tipo, valore)
+    override fun campionatore(tipo: Int, pad: Int, valore: Int) = Motore.campionatore(tipo, pad, valore)
     override fun impostaDvs(parametro: Int, valore: Float) = Motore.impostaDvs(parametro, valore)
     override fun statoDvs(dest: FloatArray) = Motore.statoDvs(dest)
     override fun stato(dest: DoubleArray) = Motore.stato(dest)

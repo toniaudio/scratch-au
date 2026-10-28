@@ -103,7 +103,9 @@ void Mixer::canaleRender(int n, float* l, float* r, int frame) {
             float lp, hp;
             s.filtro[ch].processa(eq, lp, hp);
             const float filtrato = passaAlto ? hp : lp;
-            const float y = (eq + (filtrato - eq) * mx) * gv;
+            const float pre = eq + (filtrato - eq) * mx;
+            if (i < kMaxCuffie) (ch == 0 ? preL_[n] : preR_[n])[i] = pre;  // prima del fader: per le cuffie
+            const float y = pre * gv;
             picco = std::max(picco, std::fabs(y));
             canali[ch][i] = y;
         }
@@ -111,7 +113,7 @@ void Mixer::canaleRender(int n, float* l, float* r, int frame) {
     c.livello.store(picco, std::memory_order_relaxed);
 }
 
-void Mixer::render(float* aL, float* aR, float* bL, float* bR, float* uscita, int frame) {
+void Mixer::render(float* aL, float* aR, float* bL, float* bR, float* uscita, int frame, float* cuffie) {
     canaleRender(0, aL, aR, frame);
     canaleRender(1, bL, bR, frame);
 
@@ -145,6 +147,31 @@ void Mixer::render(float* aL, float* aR, float* bL, float* bR, float* uscita, in
     }
     livelloL.store(pL, std::memory_order_relaxed);
     livelloR.store(pR, std::memory_order_relaxed);
+    if (cuffie == nullptr) return;
+    if (frame > kMaxCuffie) {
+        std::fill(cuffie, cuffie + 2 * frame, 0.0f);
+        return;
+    }
+
+    // Pre-ascolto: canali scelti (prima del fader) + master, al volume delle cuffie
+    const float kCuffie = std::exp(-1.0f / (0.005f * sr_));
+    const float obiettivoA = canale[0].cuffia.load() ? 1.0f : 0.0f;
+    const float obiettivoB = canale[1].cuffia.load() ? 1.0f : 0.0f;
+    const float mix0 = mixCuffie_, vol0 = volumeCuffie_;
+    mixCuffie_ = avvicina(mixCuffie_, std::clamp(mixCuffie.load(), 0.0f, 1.0f), kMaster);
+    const float vc = std::clamp(volumeCuffie.load(), 0.0f, 1.0f);
+    volumeCuffie_ = avvicina(volumeCuffie_, vc * vc, kMaster);
+    for (int i = 0; i < frame; ++i) {
+        st_[0].cuffia = obiettivoA + (st_[0].cuffia - obiettivoA) * kCuffie;
+        st_[1].cuffia = obiettivoB + (st_[1].cuffia - obiettivoB) * kCuffie;
+        const float t = static_cast<float>(i + 1) * inv;
+        const float m = mix0 + (mixCuffie_ - mix0) * t;
+        const float v = vol0 + (volumeCuffie_ - vol0) * t;
+        const float cueL = preL_[0][i] * st_[0].cuffia + preL_[1][i] * st_[1].cuffia;
+        const float cueR = preR_[0][i] * st_[0].cuffia + preR_[1][i] * st_[1].cuffia;
+        cuffie[2 * i] = std::clamp((cueL * (1.0f - m) + uscita[2 * i] * m) * v, -1.0f, 1.0f);
+        cuffie[2 * i + 1] = std::clamp((cueR * (1.0f - m) + uscita[2 * i + 1] * m) * v, -1.0f, 1.0f);
+    }
 }
 
 }  // namespace djaaay

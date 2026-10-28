@@ -47,7 +47,7 @@ import com.toniaudio.djaaay.braniVisibili
 
 /** Libreria aperta da un deck, dentro lo spazio di quel deck: un tocco su un brano lo carica lì. */
 @Composable
-fun LibreriaDeck(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = Modifier) {
+fun LibreriaDeck(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = Modifier, perCampione: Int? = null) {
     val deck = app.deck[d]
     val lista = rememberLazyListState()
 
@@ -67,7 +67,12 @@ fun LibreriaDeck(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = Mod
                     .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                if (deck.libCerca.isEmpty()) Text("Cerca nel deck ${deck.lettera}…", color = Colori.Spento, fontSize = 10.sp)
+                if (deck.libCerca.isEmpty()) {
+                    Text(
+                        if (perCampione != null) "Cerca un suono per il pad ${perCampione + 1}…" else "Cerca nel deck ${deck.lettera}…",
+                        color = Colori.Spento, fontSize = 10.sp,
+                    )
+                }
                 BasicTextField(
                     deck.libCerca, { deck.libCerca = it; deck.libSelezione = 0 },
                     singleLine = true,
@@ -79,7 +84,9 @@ fun LibreriaDeck(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = Mod
             Spacer(Modifier.width(6.dp))
             Box(
                 Modifier.size(26.dp).background(Colori.Pannello2, RoundedCornerShape(6.dp))
-                    .pointerInput(Unit) { detectTapGestures { c.chiudiLibreria(d) } },
+                    .pointerInput(perCampione) {
+                        detectTapGestures { if (perCampione != null) c.chiudiSceltaCampione() else c.chiudiLibreria(d) }
+                    },
                 contentAlignment = Alignment.Center,
             ) { Text("✕", color = Colori.Spento, fontSize = 12.sp) }
         }
@@ -123,9 +130,10 @@ fun LibreriaDeck(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = Mod
                         }
                         itemsIndexed(brani, key = { _, b -> b.id }) { i, b ->
                             RigaBrano(
-                                b, app.bpmNoti[b.chiave], caricato = deck.brano?.id == b.id,
+                                b, app.bpmNoti[b.chiave],
+                                caricato = if (perCampione != null) app.campionatore.pad[perCampione].brano?.id == b.id else deck.brano?.id == b.id,
                                 scelto = app.midi.dispositivo != null && i == deck.libSelezione,
-                            ) { c.caricaBrano(d, b) }
+                            ) { if (perCampione != null) c.caricaCampione(perCampione, b) else c.caricaBrano(d, b) }
                         }
                     }
                 }
@@ -135,7 +143,10 @@ fun LibreriaDeck(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = Mod
             Modifier.fillMaxWidth().background(Colori.Barra).padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text("tocca un brano: si carica nel deck ${deck.lettera}", color = Colori.Spento, fontSize = 8.5.sp)
+            Text(
+                if (perCampione != null) "tocca un brano: va nel pad ${perCampione + 1}" else "tocca un brano: si carica nel deck ${deck.lettera}",
+                color = Colori.Spento, fontSize = 8.5.sp,
+            )
             Text("${app.libreria.size} brani", color = Colori.Spento, fontSize = 8.5.sp)
         }
     }

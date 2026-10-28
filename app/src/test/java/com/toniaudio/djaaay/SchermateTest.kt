@@ -150,6 +150,44 @@ class SchermateTest {
         s.schedaOpzioni = 3
     }
 
+    // One Deck: deck A + campionatore
+    private fun campionatoreFinto(s: StatoApp, c: Controllore) {
+        c.unDeck(true)
+        val nomi = listOf("Fresh!", "Ahhh", "Boom Bap Loop 03", "Funky Drummer Break", null, "Battle Weapon Vol.2", null, null)
+        nomi.forEachIndexed { i, n -> if (n != null) s.campionatore.pad[i].brano = branoFinto(100L + i, n, "", 4) }
+        s.campionatore.pad[2].modo = 1
+        s.campionatore.pad[2].suona = true
+        s.campionatore.pad[2].avanzamento = 0.4f
+        s.campionatore.pad[1].modo = 2
+        s.messaggio = null
+    }
+
+    @Test fun oneDeck() = foto("11-one-deck") { s, c -> campionatoreFinto(s, c) }
+
+    @Test fun oneDeckPad() = foto("11b-one-deck-pad") { s, c -> campionatoreFinto(s, c); s.vista = 2 }
+
+    @Test fun oneDeckMenu() = foto("11c-one-deck-menu") { s, c ->
+        campionatoreFinto(s, c)
+        c.modificaCampionatore()
+        c.padCampione(2)
+    }
+
+    @Test fun oneDeckLibreria() = foto("11d-one-deck-libreria") { s, c -> campionatoreFinto(s, c); c.padCampione(4) }
+
+    @Test fun mixerCuffie() = foto("12-mixer-cuffie") { s, c ->
+        s.vista = 1
+        c.attivaCuffie(true)
+        c.cuffia(1)
+        s.messaggio = null
+    }
+
+    @Test fun opzioniPreascolto() = foto("12b-opzioni-audio-cuffie") { s, c ->
+        c.attivaCuffie(true)
+        s.messaggio = null
+        s.opzioniAperte = true
+        s.schedaOpzioni = 1
+    }
+
     @Test fun vuoto() = foto("7-appena-aperta") { s, _ ->
         for (d in s.deck) { d.brano = null; d.waveform = null; d.bpm = 0.0; d.posizione = 0.0; d.durata = 0.0; d.inPlay = false; d.livello = 0f }
         s.deck[1].caricamento = 0.4f

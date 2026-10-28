@@ -1,6 +1,7 @@
 #include "Motore.h"
 
 #include <algorithm>
+#include <cstddef>
 
 namespace djaaay {
 
@@ -8,6 +9,7 @@ void Motore::prepara(double sampleRate) {
     sr_ = sampleRate;
     for (auto& d : deck) d.prepara(sampleRate);
     for (auto& e : effetto) e.prepara(sampleRate);
+    campionatore.prepara(sampleRate);
     mixer.prepara(sampleRate);
     timecode.prepara(sampleRate);
 }
@@ -35,9 +37,8 @@ void Motore::leggiTimecode(int n) {
     }
 }
 
-void Motore::render(float* uscita, int frame) {
-    float* const inizio = uscita;
-    const int totale = frame;
+void Motore::render(float* uscita, int frame, int canali) {
+    const bool scheda = canali >= 4;
     while (frame > 0) {
         const int n = std::min(frame, kBlocco);
         const bool dvs = deck[0].dvs.load(std::memory_order_relaxed) || deck[1].dvs.load(std::memory_order_relaxed);
@@ -45,13 +46,27 @@ void Motore::render(float* uscita, int frame) {
         if (dvs || ingresso.disponibili() > 0) leggiTimecode(n);
         deck[0].render(aL_, aR_, n, dvs ? velTc_ : nullptr);
         deck[1].render(bL_, bR_, n, dvs ? velTc_ : nullptr);
+        campionatore.render(bL_, bR_, n);  // si somma al deck B (in One Deck il deck B è fermo)
         effetto[0].render(aL_, aR_, n);
         effetto[1].render(bL_, bR_, n);
-        mixer.render(aL_, aR_, bL_, bR_, uscita, n);
-        uscita += 2 * n;
+        if (scheda) {
+            mixer.render(aL_, aR_, bL_, bR_, master_, n, cuffie_);
+            for (int i = 0; i < n; ++i) {
+                float* f = uscita + static_cast<ptrdiff_t>(i) * canali;
+                f[0] = master_[2 * i];
+                f[1] = master_[2 * i + 1];
+                f[2] = cuffie_[2 * i];
+                f[3] = cuffie_[2 * i + 1];
+                for (int ch = 4; ch < canali; ++ch) f[ch] = 0.0f;
+            }
+            registratore.scrivi(master_, n);
+        } else {
+            mixer.render(aL_, aR_, bL_, bR_, uscita, n);
+            registratore.scrivi(uscita, n);
+        }
+        uscita += static_cast<ptrdiff_t>(canali) * n;
         frame -= n;
     }
-    registratore.scrivi(inizio, totale);
 }
 
 }  // namespace djaaay

@@ -44,7 +44,23 @@ enum class AzioneMidi(val nome: String, val perDeck: Boolean, val continuo: Bool
     LIB_GIU("Libreria giù", true, false),
     LIB_SCORRI("Libreria scorri (manopola)", true, true),
     LIB_CARICA("Libreria carica", true, false),
+    CUFFIA("Cuffia (pre-ascolto)", true, false),
+    MIX_CUFFIE("Cuffie CUE/MASTER", false, true),
+    VOLUME_CUFFIE("Volume cuffie", false, true),
+    CAMPIONE_1("Campionatore pad 1", false, false),
+    CAMPIONE_2("Campionatore pad 2", false, false),
+    CAMPIONE_3("Campionatore pad 3", false, false),
+    CAMPIONE_4("Campionatore pad 4", false, false),
+    CAMPIONE_5("Campionatore pad 5", false, false),
+    CAMPIONE_6("Campionatore pad 6", false, false),
+    CAMPIONE_7("Campionatore pad 7", false, false),
+    CAMPIONE_8("Campionatore pad 8", false, false),
 }
+
+val AZIONI_CAMPIONE = listOf(
+    AzioneMidi.CAMPIONE_1, AzioneMidi.CAMPIONE_2, AzioneMidi.CAMPIONE_3, AzioneMidi.CAMPIONE_4,
+    AzioneMidi.CAMPIONE_5, AzioneMidi.CAMPIONE_6, AzioneMidi.CAMPIONE_7, AzioneMidi.CAMPIONE_8,
+)
 
 val AZIONI_HOT_CUE = listOf(AzioneMidi.HOT_CUE_1, AzioneMidi.HOT_CUE_2, AzioneMidi.HOT_CUE_3, AzioneMidi.HOT_CUE_4)
 val AZIONI_PAD_FX = listOf(AzioneMidi.FX_ECHO, AzioneMidi.FX_DUB, AzioneMidi.FX_REVERB, AzioneMidi.FX_STRETCH)

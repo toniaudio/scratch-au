@@ -51,7 +51,21 @@ fun BarraAlta(app: StatoApp, c: Controllore, modifier: Modifier = Modifier) {
         ) {
             Text("DVS", color = Colori.Testo, fontSize = if (telefono) 17.sp else 15.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
         }
-        InfoDeck(app, app.deck[1], c, Modifier.weight(1f))
+        if (app.opzioni.unDeck) InfoCampionatore(app, Modifier.weight(1f)) else InfoDeck(app, app.deck[1], c, Modifier.weight(1f))
+    }
+}
+
+/** One Deck: al posto del deck B, quanti suoni ha il campionatore e quanti ne suonano. */
+@Composable
+private fun InfoCampionatore(app: StatoApp, modifier: Modifier) {
+    val telefono = LocalMisure.current.telefono
+    val pad = app.campionatore.pad
+    Column(modifier, horizontalAlignment = Alignment.End) {
+        Text("CAMPIONATORE", color = Colori.Testo, fontSize = if (telefono) 13.5.sp else 11.5.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            "${pad.count { it.brano != null }} suoni · ${pad.count { it.suona }} in play",
+            color = Colori.Spento, fontSize = if (telefono) 11.5.sp else 10.sp,
+        )
     }
 }
 

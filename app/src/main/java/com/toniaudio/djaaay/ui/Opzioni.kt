@@ -117,6 +117,13 @@ private fun SchedaGenerale(app: StatoApp, c: Controllore) {
             Titolo("CROSSFADER")
             RigaScelta("Curva", listOf("Taglio", "Lineare", "Morbida"), app.mixer.curva) { c.curva(it) }
             RigaInterruttore("Inverti (hamster)", app.mixer.inverti) { c.inverti(it) }
+            Titolo("ONE DECK")
+            Riga("One Deck", "deck A + campionatore (8 pad) al posto del deck B") {
+                Switch(
+                    o.unDeck, { c.unDeck(it) },
+                    colors = SwitchDefaults.colors(checkedTrackColor = Colori.Verde, checkedThumbColor = Color.White, uncheckedTrackColor = Colori.Linea),
+                )
+            }
             Titolo("REGISTRAZIONE")
             Riga("REC", "il tasto REC sotto il master registra il mix in Musica/DVS") {}
         }
@@ -132,7 +139,7 @@ private fun SchedaAudio(app: StatoApp, c: Controllore) {
         }
     }
     Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(26.dp)) {
-        Column(Modifier.weight(1f)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
             Titolo("USCITA")
             RigaScelta("Buffer", listOf("1×", "2×", "4×"), listOf(1, 2, 4).indexOf(app.opzioni.buffer)) {
                 c.impostaBuffer(listOf(1, 2, 4)[it])
@@ -140,6 +147,27 @@ private fun SchedaAudio(app: StatoApp, c: Controllore) {
             Text(
                 "Più piccolo = meno ritardo tra dito e suono. Se \"Interruzioni del suono\" cresce mentre suona, scegline uno più grande.",
                 color = Colori.Spento, fontSize = 10.sp, modifier = Modifier.padding(top = 6.dp),
+            )
+            Titolo("PRE-ASCOLTO IN CUFFIA")
+            Riga(
+                "Cuffie sulle uscite 3–4",
+                if (app.cuffieAttive) "attivo: casse sulle uscite 1–2, cuffie sulle 3–4"
+                else "serve una scheda audio USB con 4 uscite",
+            ) {
+                Switch(
+                    app.opzioni.cuffie, { c.attivaCuffie(it) },
+                    colors = SwitchDefaults.colors(checkedTrackColor = Colori.Verde, checkedThumbColor = Color.White, uncheckedTrackColor = Colori.Linea),
+                )
+            }
+            RigaCursore("CUE ↔ MASTER", "cosa senti in cuffia", app.mixer.mixCuffie, "${(app.mixer.mixCuffie * 100).toInt()}%") {
+                c.mixCuffie(it)
+            }
+            RigaCursore("Volume cuffie", "", app.mixer.volumeCuffie, "${(app.mixer.volumeCuffie * 100).toInt()}%") {
+                c.volumeCuffie(it)
+            }
+            Text(
+                "Col tasto cuffia di ogni canale (nel mixer) scegli cosa pre-ascoltare.",
+                color = Colori.Spento, fontSize = 10.sp, modifier = Modifier.padding(top = 4.dp),
             )
         }
         Column(Modifier.weight(1f)) {

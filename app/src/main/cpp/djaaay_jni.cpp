@@ -28,16 +28,38 @@ public:
         std::lock_guard<std::mutex> lock(mutex_);
         // già in funzione (es. l'Activity è stata ricreata): non si riapre, la musica non si interrompe
         if (stream_ && stream_->getState() == oboe::StreamState::Started) return true;
+        return apriSenzaLock();
+    }
+
+    // Pre-ascolto: con `attiva` l'uscita si apre a 4 canali sulla scheda `deviceId` (master 1-2, cuffie 3-4).
+    // Restituisce "" se va, altrimenti il problema (e si torna all'uscita stereo normale).
+    std::string impostaCuffie(bool attiva, int deviceId) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        chiudiSenzaLock();
+        canali_ = attiva ? 4 : 2;
+        deviceId_ = attiva ? deviceId : 0;
+        if (apriSenzaLock() && stream_->getChannelCount() >= canali_) return "";
+        std::string errore = attiva ? "la scheda non ha 4 uscite (o non si apre a 4 canali)" : "l'audio non si apre";
+        chiudiSenzaLock();
+        canali_ = 2;
+        deviceId_ = 0;
+        apriSenzaLock();
+        return errore;
+    }
+
+private:
+    bool apriSenzaLock() {
         chiudiSenzaLock();
         oboe::AudioStreamBuilder b;
         b.setDirection(oboe::Direction::Output)
             ->setPerformanceMode(oboe::PerformanceMode::LowLatency)
             ->setSharingMode(oboe::SharingMode::Exclusive)
             ->setFormat(oboe::AudioFormat::Float)
-            ->setChannelCount(oboe::ChannelCount::Stereo)
-            ->setChannelConversionAllowed(true)
+            ->setChannelCount(canali_)
+            ->setChannelConversionAllowed(canali_ == 2)  // a 4 canali servono proprio 4 uscite vere
             ->setDataCallback(this)
             ->setErrorCallback(this);
+        if (deviceId_ > 0) b.setDeviceId(deviceId_);
         const oboe::Result r = b.openStream(stream_);
         if (r != oboe::Result::OK) {
             __android_log_print(ANDROID_LOG_ERROR, kTag, "apertura audio fallita: %s", oboe::convertToText(r));
@@ -45,13 +67,16 @@ public:
             return false;
         }
         applicaBuffer();
+        canaliAperti_.store(stream_->getChannelCount());
         // il flusso non è ancora partito: si può preparare il motore senza disturbare il thread audio
         motore.prepara(stream_->getSampleRate());
         caricoPicco_.store(0.0f);
-        __android_log_print(ANDROID_LOG_INFO, kTag, "audio %d Hz, burst %d", stream_->getSampleRate(),
-                            stream_->getFramesPerBurst());
+        __android_log_print(ANDROID_LOG_INFO, kTag, "audio %d Hz, %d canali, burst %d", stream_->getSampleRate(),
+                            stream_->getChannelCount(), stream_->getFramesPerBurst());
         return stream_->requestStart() == oboe::Result::OK;
     }
+
+public:
 
     void chiudi() {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -142,7 +167,7 @@ public:
 
     oboe::DataCallbackResult onAudioReady(oboe::AudioStream* s, void* dati, int32_t frame) override {
         const auto inizio = std::chrono::steady_clock::now();
-        motore.render(static_cast<float*>(dati), frame);
+        motore.render(static_cast<float*>(dati), frame, s->getChannelCount());
         // carico = tempo di calcolo / durata del blocco (vicino al 100% il suono si interrompe)
         const double usato = std::chrono::duration<double>(std::chrono::steady_clock::now() - inizio).count();
         const float carico = static_cast<float>(usato * s->getSampleRate() / std::max(1, frame));
@@ -158,9 +183,14 @@ public:
             std::lock_guard<std::mutex> lock(mutex_);
             if (stream_.get() != chiuso) return;  // nel frattempo l'app l'ha chiuso o riaperto lei
             stream_.reset();
+            // scheda scollegata: si torna all'uscita stereo normale (l'app lo vede da canaliAperti)
+            canali_ = 2;
+            deviceId_ = 0;
         }
         apri();
     }
+
+    int canaliAperti() const { return canaliAperti_.load(); }
 
     djaaay::Motore motore;
 
@@ -180,6 +210,9 @@ private:
     std::shared_ptr<oboe::AudioStream> stream_;
     std::mutex mutex_;
     int multiplo_ = 2;
+    int canali_ = 2;    // 4 = pre-ascolto sulla scheda (master 1-2, cuffie 3-4)
+    int deviceId_ = 0;  // 0 = uscita scelta da Android
+    std::atomic<int> canaliAperti_{2};
     bool tonoCaricato_ = false;
     std::atomic<float> caricoUltimo_{0.0f};
     std::atomic<float> caricoPicco_{0.0f};
@@ -450,7 +483,8 @@ JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaDeck(JNIEnv*, job
     }
 }
 
-// Mixer: per canale 0 gain, 1 alti, 2 medi, 3 bassi, 4 filtro, 5 volume; generali 10 crossfader, 11 curva, 12 inverti, 13 master
+// Mixer: per canale 0 gain, 1 alti, 2 medi, 3 bassi, 4 filtro, 5 volume, 6 cuffia (pre-ascolto);
+// generali 10 crossfader, 11 curva, 12 inverti, 13 master, 14 mix cuffie (0 pre-ascolto … 1 master), 15 volume cuffie
 JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaMixer(JNIEnv*, jobject, jint parametro, jint canale, jfloat v) {
     djaaay::Mixer& m = uscita()->motore.mixer;
     if (parametro < 10) {
@@ -463,6 +497,7 @@ JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaMixer(JNIEnv*, jo
             case 3: c.bassi.store(v); break;
             case 4: c.filtro.store(v); break;
             case 5: c.volume.store(v); break;
+            case 6: c.cuffia.store(v >= 0.5f); break;
             default: break;
         }
         return;
@@ -472,6 +507,8 @@ JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaMixer(JNIEnv*, jo
         case 11: m.curva.store(static_cast<int>(v)); break;
         case 12: m.inverti.store(v >= 0.5f); break;
         case 13: m.master.store(v); break;
+        case 14: m.mixCuffie.store(std::clamp(v, 0.0f, 1.0f)); break;
+        case 15: m.volumeCuffie.store(std::clamp(v, 0.0f, 1.0f)); break;
         default: break;
     }
 }
@@ -538,12 +575,15 @@ JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaFx(JNIEnv*, jobje
 
 // Istantanea per l'interfaccia (a ogni fotogramma), senza allocazioni:
 // per deck (×8, da 0 e da 8): posizione, durata, velocità, in play, cue, keylock in uso, livello canale, 0;
-// 16 livello master L, 17 livello master R, 18 REC attiva, 19 secondi registrati
+// 16 livello master L, 17 livello master R, 18 REC attiva, 19 secondi registrati;
+// 20…27 pad del campionatore che suonano, 28…35 avanzamento dei pad (0…1), 36 canali dell'uscita (4 = cuffie)
+constexpr int kValoriStato = 37;
 JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_stato(JNIEnv* env, jobject, jdoubleArray dest) {
-    if (env->GetArrayLength(dest) < 20) return;
+    if (env->GetArrayLength(dest) < kValoriStato) return;
     djaaay::Motore& m = uscita()->motore;
     for (auto& d : m.deck) d.raccogliTracceVecchie();  // libera i brani sostituiti (sempre dal thread dell'interfaccia)
-    jdouble v[20] = {};
+    m.campionatore.raccogliTracceVecchie();
+    jdouble v[kValoriStato] = {};
     for (int d = 0; d < 2; ++d) {
         const djaaay::Deck& k = m.deck[d];
         v[d * 8 + 0] = k.posizioneSecondi();
@@ -558,7 +598,45 @@ JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_stato(JNIEnv* env, jobje
     v[17] = m.mixer.livelloR.load();
     v[18] = m.registratore.attiva() ? 1.0 : 0.0;
     v[19] = m.registratore.secondi();
-    env->SetDoubleArrayRegion(dest, 0, 20, v);
+    for (int p = 0; p < djaaay::Campionatore::kPad; ++p) {
+        v[20 + p] = m.campionatore.suona(p) ? 1.0 : 0.0;
+        v[28 + p] = m.campionatore.avanzamento(p);
+    }
+    v[36] = uscita()->canaliAperti();
+    env->SetDoubleArrayRegion(dest, 0, kValoriStato, v);
+}
+
+// Pre-ascolto: uscita a 4 canali sulla scheda (master 1-2, cuffie 3-4) o di nuovo stereo. "" = fatto
+JNIEXPORT jstring JNICALL Java_com_toniaudio_djaaay_Motore_uscitaCuffie(JNIEnv* env, jobject, jboolean attiva, jint deviceId) {
+    return env->NewStringUTF(uscita()->impostaCuffie(attiva == JNI_TRUE, deviceId).c_str());
+}
+
+// Campionatore: 0 premi, 1 lascia, 2 togli, 3 modo (valore: 0 una volta, 1 loop, 2 tieni), 4 ferma tutti i pad
+JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_campionatore(JNIEnv*, jobject, jint tipo, jint pad, jint valore) {
+    djaaay::Campionatore& c = uscita()->motore.campionatore;
+    if (pad < 0 || pad >= djaaay::Campionatore::kPad) return;
+    djaaay::ComandoCampionatore k;
+    k.pad = pad;
+    switch (tipo) {
+        case 0: k.tipo = djaaay::ComandoCampionatore::Premi; break;
+        case 1: k.tipo = djaaay::ComandoCampionatore::Lascia; break;
+        case 2: k.tipo = djaaay::ComandoCampionatore::Togli; break;
+        case 3: c.modo[pad].store(std::clamp(static_cast<int>(valore), 0, 2)); return;
+        case 4: k.tipo = djaaay::ComandoCampionatore::Ferma; break;
+        default: return;
+    }
+    c.invia(k);
+}
+
+// Un brano caricato e analizzato va in un pad del campionatore (che ne diventa proprietario)
+JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_caricaNelCampionatore(JNIEnv*, jobject, jlong h, jint pad) {
+    if (h == 0) return;
+    Caricamento* c = caricamento(h);
+    if (c->traccia->frame() > 0) {
+        uscita()->motore.campionatore.carica(pad, c->traccia);
+        c->traccia = nullptr;
+    }
+    delete c;
 }
 
 }  // extern "C"

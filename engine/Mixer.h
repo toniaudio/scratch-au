@@ -1,4 +1,6 @@
 // Mixer a due canali: GAIN → EQ (alti/medi/bassi con kill) → FILTRO → volume → crossfader → master.
+// Pre-ascolto: i canali con la cuffia accesa vanno in cuffia prima del fader (come sui mixer DJ), mescolati al
+// master con CUE/MASTER e con il loro volume.
 // Le regolazioni sono atomiche (si possono muovere da qualsiasi thread); render() gira nel thread audio.
 #pragma once
 
@@ -34,6 +36,7 @@ struct Canale {
     std::atomic<float> bassi{0.5f};
     std::atomic<float> filtro{0.0f};   // −1 passa-basso … 0 spento … +1 passa-alto
     std::atomic<float> volume{0.8f};   // fader 0…1
+    std::atomic<bool> cuffia{false};   // pre-ascolto di questo canale
     std::atomic<float> livello{0.0f};  // picco dopo il fader (per il meter)
 };
 
@@ -47,9 +50,14 @@ public:
     std::atomic<bool> inverti{false};
     std::atomic<float> master{0.8f};
     std::atomic<float> livelloL{0.0f}, livelloR{0.0f};
+    std::atomic<float> mixCuffie{0.0f};     // 0 = solo pre-ascolto … 1 = solo master
+    std::atomic<float> volumeCuffie{0.8f};
 
-    // Ingressi: due deck stereo non interleaved (modificati sul posto). Uscita interleaved stereo.
-    void render(float* aL, float* aR, float* bL, float* bR, float* uscita, int frame);
+    static constexpr int kMaxCuffie = 512;  // blocchi più lunghi: niente pre-ascolto (il motore usa blocchi da 256)
+
+    // Ingressi: due deck stereo non interleaved (modificati sul posto). Uscita interleaved stereo; `cuffie` (se non
+    // è nullptr) riceve il pre-ascolto, interleaved stereo.
+    void render(float* aL, float* aR, float* bL, float* bR, float* uscita, int frame, float* cuffie = nullptr);
 
 private:
     struct Stato {
@@ -57,6 +65,7 @@ private:
         FiltroSVF filtro[2];
         float gain = 1.0f, alti = 1.0f, medi = 1.0f, bassi = 1.0f, volume = 0.64f, xf = 1.0f;
         float filtroMix = 0.0f;  // 0 = filtro escluso, 1 = attivo
+        float cuffia = 0.0f;     // quanto il canale entra in cuffia (sfuma, niente click)
         bool passaAlto = false;  // tipo di filtro che sta suonando
         float fc = 20000.0f, q = 0.8f;
     };
@@ -68,6 +77,8 @@ private:
     float master_ = 0.64f;
     float riduzione_ = 1.0f;  // limitatore
     float rilascio_ = 0.0f;
+    float mixCuffie_ = 0.0f, volumeCuffie_ = 0.64f;
+    float preL_[2][kMaxCuffie] = {}, preR_[2][kMaxCuffie] = {};  // canali prima del fader, per le cuffie
 };
 
 }  // namespace djaaay
