@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>DVS telefono</title>
+<style>
+:root{
+  --bg:#0b0d12; --panel:#141821; --panel2:#1b2030; --line:#262c3d; --txt:#e8ecf4; --dim:#8a93a8; --scuro:#5a6378;
+  --neutro:#c9cfdb; --da:#ff3b47; --db:#3d7bff; --ok:#3ddc84; --hc1:#ffb020; --hc2:#3ddc84; --hc3:#b07cff; --hc4:#ff4fd8;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:914px;height:411px;overflow:hidden;background:var(--bg);color:var(--txt);
+  font-family:Inter,Roboto,system-ui,sans-serif;font-size:13px;-webkit-font-smoothing:antialiased}
+.screen{position:absolute;inset:0;display:none;flex-direction:column}
+.screen.on{display:flex}
+.mono{font-family:'JetBrains Mono','Roboto Mono',monospace}
+/* barra alta: più bassa, solo l'essenziale */
+.top{height:36px;display:flex;align-items:center;padding:0 8px;gap:8px;background:#0e1118;border-bottom:1px solid var(--line);flex:none}
+.lib{width:40px;height:30px;border-radius:8px;background:var(--panel2);display:grid;place-items:center}
+.lib svg{width:18px;height:18px}
+.info{flex:1;min-width:0;display:flex;align-items:center;gap:8px}
+.info.b{flex-direction:row-reverse;text-align:right}
+.info .t{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.info .s{color:var(--dim);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.info .bpm{font-weight:800;font-size:16px}
+.info .rest{color:var(--dim);font-size:12px}
+.logo{font-weight:900;letter-spacing:2px;font-size:16px;padding:4px 14px;border-radius:8px;background:var(--panel2);border:1px solid var(--line)}
+/* waveform */
+.waves{position:relative;flex:none;border-bottom:1px solid var(--line)}
+.waves canvas{display:block}
+.ph{position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;background:#fff;box-shadow:0 0 6px #fff8}
+/* selettore delle viste */
+.viste{display:flex;gap:3px;background:var(--panel);border-radius:10px;padding:3px}
+.viste div{padding:0 9px;height:30px;display:grid;place-items:center;border-radius:8px;font-weight:800;font-size:11.5px;letter-spacing:.5px;color:var(--dim)}
+.viste div.on{background:var(--panel2);color:var(--txt);box-shadow:inset 0 0 0 1px var(--line)}
+/* corpo */
+.body{flex:1;display:flex;min-height:0}
+.deck{flex:1;display:flex;gap:10px;padding:8px 12px;min-width:0}
+.deck.b{flex-direction:row-reverse}
+.dcol{flex:1;display:flex;flex-direction:column;gap:8px;align-items:center;min-width:0}
+.platter{border-radius:50%;position:relative;flex:none;
+  background:repeating-radial-gradient(circle at 50% 50%,#15171d 0 1.6px,#1d2029 1.6px 3.2px);
+  box-shadow:0 0 0 3px #232838,0 6px 18px #0008}
+.platter .lab{position:absolute;border-radius:50%;display:grid;place-items:center;font-weight:900;font-size:14px;color:#fff}
+.platter .mk{position:absolute;left:50%;top:6px;width:4px;margin-left:-2px;border-radius:2px;background:#fff}
+.key{position:absolute;top:0;font-weight:800;font-size:12px;color:var(--scuro);display:flex;gap:4px;align-items:center}
+.key.on{color:var(--ok)}
+.row{display:flex;gap:8px;width:100%}
+.btn{flex:1;border-radius:10px;background:var(--panel2);border:1px solid var(--line);display:grid;place-items:center;font-weight:800;font-size:14px;letter-spacing:.5px}
+.btn.on{background:var(--neutro);color:var(--bg);border-color:var(--neutro)}
+.btn.grn{border:2px solid var(--ok);color:var(--ok)}
+.btn small{font-size:11px;font-weight:700;color:var(--dim)}
+/* pitch */
+.pitch{width:44px;display:flex;flex-direction:column;align-items:center;gap:6px;flex:none}
+.lbl{font-weight:800;font-size:10.5px;letter-spacing:.6px;color:var(--dim)}
+/* fader stile mixer */
+.fader{position:relative;flex:1;width:44px}
+.fader .slot{position:absolute;left:50%;top:14px;bottom:14px;width:5px;margin-left:-2.5px;background:#030406;border-radius:3px;box-shadow:0 0 0 1px #2a3040}
+.fader .tick{position:absolute;left:50%;height:1px;background:#3a4152}
+.fader .cap{position:absolute;left:50%;width:34px;height:34px;margin-left:-17px;border-radius:4px;
+  background:linear-gradient(180deg,#5a6176 0%,#1c2029 18%,#4b5265 50%,#1c2029 82%,#14171e 100%);
+  box-shadow:0 2px 4px #000a,inset 0 0 0 1px #6a728799}
+.fader .cap::after{content:"";position:absolute;left:2px;right:2px;top:50%;height:2px;margin-top:-1px;background:#fff}
+.xf{position:relative;height:44px}
+.xf .slot{position:absolute;top:50%;left:14px;right:14px;height:5px;margin-top:-2.5px;background:#030406;border-radius:3px;box-shadow:0 0 0 1px #2a3040}
+.xf .cap{position:absolute;top:50%;width:22px;height:40px;margin-top:-20px;margin-left:-11px;border-radius:4px;
+  background:linear-gradient(90deg,#5a6176 0%,#1c2029 18%,#4b5265 50%,#1c2029 82%,#14171e 100%);
+  box-shadow:0 2px 4px #000a,inset 0 0 0 1px #6a728799}
+.xf .cap::after{content:"";position:absolute;top:2px;bottom:2px;left:50%;width:2px;margin-left:-1px;background:#fff}
+/* manopole */
+.knob{border-radius:50%;position:relative;background:radial-gradient(circle at 50% 40%,#353c50,#1b2030 70%);box-shadow:0 0 0 1px #2d3448,0 3px 8px #0008;flex:none}
+.knob i{position:absolute;left:50%;top:12%;width:3px;height:30%;margin-left:-1.5px;background:#fff;border-radius:2px;transform-origin:50% 127%}
+.filt{border-radius:50%;position:relative;flex:none}
+.meter{width:6px;border-radius:3px;background:linear-gradient(0deg,#3ddc84 0 70%,#ffb020 70% 88%,#ff4040 88%);position:relative;overflow:hidden}
+.meter b{position:absolute;left:0;right:0;top:0;background:var(--bg)}
+/* mixer compatto (vista giradischi) */
+.mixc{width:236px;flex:none;display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 6px 6px;border-left:1px solid var(--line);border-right:1px solid var(--line);background:var(--panel)}
+.nota{position:absolute;background:#ffb020;color:#0b0d12;font-weight:800;font-size:12px;padding:4px 9px;border-radius:7px;box-shadow:0 3px 10px #000a;white-space:nowrap}
+.nota::before{content:"";position:absolute;width:10px;height:10px;background:#ffb020;transform:rotate(45deg)}
+.nota.giu::before{left:50%;margin-left:-5px;bottom:-5px}
+.nota.su::before{left:50%;margin-left:-5px;top:-5px}
+.nota.sx::before{left:-5px;top:50%;margin-top:-5px}
+.nota.dx::before{right:-5px;top:50%;margin-top:-5px}
+/* pad */
+.pad{border-radius:12px;background:var(--panel2);border:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-weight:800;font-size:15px}
+.pad .c{width:9px;height:9px;border-radius:50%}
+.pad small{font-size:11px;color:var(--dim);font-weight:600}
+</style>
+</head>
+<body>
+
+<!-- ========== 1. VISTA GIRADISCHI (principale) ========== -->
+<div class="screen" id="s1">
+  <div class="top" id="top1"></div>
+  <div class="waves"><canvas id="w1" width="914" height="96"></canvas><div class="ph"></div></div>
+  <div class="body">
+    <div class="deck a" id="dA"></div>
+    <div class="mixc">
+      <div class="viste" id="v1"></div>
+      <div style="display:flex;gap:10px;align-items:stretch;flex:1;width:100%;justify-content:center">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+          <div class="filt" style="width:46px;height:46px" id="fA"></div><div class="lbl">FILTRO</div>
+          <div style="flex:1;display:flex;gap:4px"><div class="fader" id="volA"></div><div class="meter" style="height:100%"><b style="height:35%"></b></div></div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+          <div class="filt" style="width:46px;height:46px" id="fB"></div><div class="lbl">FILTRO</div>
+          <div style="flex:1;display:flex;gap:4px"><div class="meter" style="height:100%"><b style="height:45%"></b></div><div class="fader" id="volB"></div></div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;width:100%"><span class="lbl">A</span><div class="xf" id="xf1" style="flex:1"></div><span class="lbl">B</span></div>
+    </div>
+    <div class="deck b" id="dB"></div>
+  </div>
+</div>
+
+<!-- ========== 2. VISTA MIXER ========== -->
+<div class="screen" id="s2">
+  <div class="top" id="top2"></div>
+  <div class="waves"><canvas id="w2" width="914" height="96"></canvas><div class="ph"></div></div>
+  <div class="body" style="flex-direction:column;padding:8px 14px 6px;gap:6px">
+    <div style="display:flex;justify-content:center"><div class="viste" id="v2"></div></div>
+    <div style="flex:1;display:flex;gap:18px;align-items:center;justify-content:center" id="mixGrande"></div>
+  </div>
+</div>
+
+<!-- ========== 3. VISTA PAD ========== -->
+<div class="screen" id="s3">
+  <div class="top" id="top3"></div>
+  <div class="waves"><canvas id="w3" width="914" height="96"></canvas><div class="ph"></div></div>
+  <div class="body" style="flex-direction:column;padding:8px 14px 6px;gap:8px">
+    <div style="display:flex;justify-content:center"><div class="viste" id="v3"></div></div>
+    <div style="flex:1;display:flex;gap:16px" id="padGrandi"></div>
+  </div>
+</div>
+
+<!-- ========== 4. VISTA FX ========== -->
+<div class="screen" id="s4">
+  <div class="top" id="top4"></div>
+  <div class="waves"><canvas id="w4" width="914" height="96"></canvas><div class="ph"></div></div>
+  <div class="body" style="flex-direction:column;padding:8px 14px 6px;gap:8px">
+    <div style="display:flex;justify-content:center"><div class="viste" id="v4"></div></div>
+    <div style="flex:1;display:flex;gap:16px" id="fxGrandi"></div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const IC='<svg viewBox="0 0 24 24" fill="none" stroke="#e8ecf4" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h11M4 11h11M4 16h7"/><circle cx="17" cy="17" r="2.5"/><path d="M19.5 17V6l2-1"/></svg>';
+function barraAlta(id){
+  $(id).innerHTML=`<div class="lib">${IC}</div>
+  <div class="info"><div style="min-width:0"><div class="t">Funky Drummer Break</div><div class="s">Classic Breaks</div></div>
+    <div style="margin-left:auto;text-align:right"><div class="bpm mono">98.0</div><div class="rest mono">-2:46</div></div></div>
+  <div class="logo">DVS</div>
+  <div class="info b"><div style="min-width:0"><div class="t">Ahhh Fresh (Scratch Tool)</div><div class="s">Skratch Sounds</div></div>
+    <div style="margin-right:auto;text-align:left"><div class="bpm mono">98.0</div><div class="rest mono">-1:20</div></div></div>
+  <div class="lib">${IC}</div>`;
+}
+function viste(id,on){
+  $(id).innerHTML=['DECK','MIXER','PAD','FX'].map((v,i)=>`<div class="${i==on?'on':''}">${v}</div>`).join('');
+}
+// waveform: due strisce, A rossa sopra, B blu sotto
+function onda(id,h){
+  const c=$(id),g=c.getContext('2d'),W=c.width,H=c.height/2;
+  let s=7;const r=()=>{s=(s*16807)%2147483647;return s/2147483647};
+  [[0,'#5C1219','#FF3B47',0.37,98],[1,'#0F2766','#3D7BFF',0.1,96]].forEach(([k,cb,cm,primo,bpm])=>{
+    const y0=k*H,mid=y0+H/2;
+    const batt=60/bpm,pxs=W/6;
+    for(let x=0;x<W;x++){
+      const t=(x-W/2)/pxs+ (k?37.4:85.2);
+      const fb=((t-primo)/batt)%1, kick=Math.exp(-fb*9), hat=Math.exp(-((fb*2)%1)*14);
+      const b=(0.25+0.75*kick)*(0.85+0.15*r()), m=(0.35+0.4*hat)*(0.8+0.2*r()), a=(0.2+0.35*hat)*(0.7+0.3*r());
+      const dim=x<W/2?0.55:1;
+      g.globalAlpha=dim;
+      g.fillStyle=cb;g.fillRect(x,mid-b*H*0.46,1,b*H*0.92);
+      g.fillStyle=cm;g.fillRect(x,mid-m*H*0.34,1,m*H*0.68);
+      g.fillStyle='#E9F6FF';g.fillRect(x,mid-a*H*0.2,1,a*H*0.4);
+    }
+    g.globalAlpha=1;g.fillStyle='#ffffff22';
+    for(let n=-20;n<20;n++){const x=W/2+((Math.floor((k?37.4:85.2)/batt)+n)*batt-(k?37.4:85.2)+primo%batt)*pxs;if(x>0&&x<W)g.fillRect(x,y0,1,H)}
+    if(k==1){const x1=W/2-0.4*pxs,x2=x1+4*batt*pxs;g.fillStyle='#3ddc8422';g.fillRect(x1,y0,x2-x1,H);g.fillStyle='#3ddc84';g.fillRect(x1,y0,2,H);g.fillRect(x2,y0,2,H)}
+    if(k==0){[[-0.8,'#FFB020'],[0.5,'#3DDC84']].forEach(([dt,col])=>{const x=W/2+dt*pxs;g.fillStyle=col;g.fillRect(x,y0,2,H);g.beginPath();g.moveTo(x,y0);g.lineTo(x+9,y0+5);g.lineTo(x,y0+10);g.fill()})}
+    g.fillStyle='#262c3d';g.fillRect(0,y0+H-1,W,1);
+  });
+}
+function fader(id,v,tacche=11){
+  const f=$(id);let h='<div class="slot"></div>';
+  for(let i=0;i<tacche;i++){const y=`calc(14px + (100% - 28px) * ${i/(tacche-1)})`;const l=i%5==0?9:6;
+    h+=`<div class="tick" style="top:${y};width:${l}px;margin-left:-${l+6}px"></div><div class="tick" style="top:${y};width:${l}px;margin-left:6px"></div>`}
+  h+=`<div class="cap" style="top:calc(14px + (100% - 28px) * ${1-v} - 17px)"></div>`;f.innerHTML=h;
+}
+function xf(id,v){$(id).innerHTML=`<div class="slot"></div><div class="cap" style="left:calc(14px + (100% - 28px) * ${v})"></div>`}
+function knob(d,v){return `<div class="knob" style="width:${d}px;height:${d}px"><i style="transform:rotate(${-135+270*v}deg)"></i></div>`}
+function filt(id,v,d=46){
+  const e=typeof id=='string'?$(id):null;
+  const html=`<svg width="${d}" height="${d}" viewBox="0 0 46 46"><circle cx="23" cy="23" r="21" fill="none" stroke="#262c3d" stroke-width="3"/>
+  ${v?`<path d="${arc(23,23,21,0,135*v)}" fill="none" stroke="#c9cfdb" stroke-width="3"/>`:''}
+  <circle cx="23" cy="23" r="16" fill="#1f2433"/><line x1="23" y1="23" x2="${23+12*Math.sin(135*v*Math.PI/180)}" y2="${23-12*Math.cos(135*v*Math.PI/180)}" stroke="#c9cfdb" stroke-width="3" stroke-linecap="round"/></svg>`;
+  if(e)e.innerHTML=html;return html;
+}
+function arc(cx,cy,r,a0,a1){const p=a=>[cx+r*Math.sin(a*Math.PI/180),cy-r*Math.cos(a*Math.PI/180)];const [x0,y0]=p(a0),[x1,y1]=p(a1);
+  return `M${x0} ${y0} A${r} ${r} 0 ${Math.abs(a1-a0)>180?1:0} ${a1>a0?1:0} ${x1} ${y1}`}
+function deck(id,lettera,col,ang,play,keyOn,pitch,tab){
+  const d=$(id),b=lettera=='B';
+  const P=164;
+  d.innerHTML=`
+  <div class="dcol" style="position:relative">
+    <div class="key ${keyOn?'on':''}" style="${b?'right:0':'left:0'}">🔒 KEY</div>
+    <div class="platter" style="width:${P}px;height:${P}px"><div class="lab" style="inset:${P*0.34}px;background:${col}">${lettera}</div>
+      <div class="mk" style="height:${P*0.2}px;transform-origin:2px ${P/2-6}px;transform:rotate(${ang}deg)"></div></div>
+    <div class="row" style="height:46px"><div class="btn">CUE</div><div class="btn ${play?'on':''}">${play?'❚❚':'▶'}</div><div class="btn">SYNC</div></div>
+    <div class="row" style="height:40px">${tab}</div>
+  </div>
+  <div class="pitch"><div class="lbl">PITCH</div><div class="fader" id="${id}p" style="width:44px"></div><div class="mono" style="font-weight:700;font-size:12px">${pitch}</div>
+    <div class="btn" style="flex:none;width:44px;height:30px;font-size:11px">◎ DVS</div></div>`;
+  fader(id+'p',b?0.62:0.5,9);
+}
+// --- schermata 1
+const hc=(n,c)=>`<div class="btn" style="font-size:15px">${c?`<span style="display:inline-flex;gap:5px;align-items:center"><span style="width:8px;height:8px;border-radius:50%;background:${c}"></span>${n}</span>`:`<small style="font-size:14px">${n}</small>`}</div>`;
+['top1','top2','top3','top4'].forEach(barraAlta);
+viste('v1',0);viste('v2',1);viste('v3',2);viste('v4',3);
+['w1','w2','w3','w4'].forEach(onda);
+deck('dA','A','#FF3B47',120,true,false,'+0.0%',hc(1,'#FFB020')+hc(2,'#3DDC84')+hc(3,'#B07CFF')+hc(4));
+deck('dB','B','#3D7BFF',-80,false,true,'+2.1%',`<div class="btn">◀</div><div class="btn grn" style="flex:2;font-size:18px">4</div><div class="btn">▶</div>`);
+fader('volA',0.85);fader('volB',0.7);filt('fA',-0.35);filt('fB',0);xf('xf1',0.12);
+
+// --- schermata 2: mixer grande
+(function(){
+  const canale=(l,v,f,eq)=>`
+   <div style="display:flex;flex-direction:column;align-items:center;gap:7px;padding:6px 12px;background:var(--panel);border:1px solid var(--line);border-radius:14px">
+     <div class="lbl" style="font-size:12px">CANALE ${l}</div>
+     <div style="display:flex;gap:16px;align-items:flex-end">
+       ${['GAIN','HI','MID','LOW'].map((n,i)=>`<div style="display:flex;flex-direction:column;align-items:center;gap:4px">${knob(i?46:34,eq[i])}<div class="lbl">${n}</div></div>`).join('')}
+     </div>
+     <div style="display:flex;flex-direction:column;align-items:center;gap:2px">${filt(null,f,62)}<div class="lbl"><span style="color:var(--scuro)">LP</span> &nbsp;FILTRO&nbsp; <span style="color:var(--scuro)">HP</span></div></div>
+   </div>`;
+  $('mixGrande').innerHTML=canale('A',0.85,-0.35,[0.5,0.5,0.5,0.15])+
+   `<div style="display:flex;flex-direction:column;gap:6px;height:100%;width:230px">
+      <div style="flex:1;display:flex;gap:12px;justify-content:center;min-height:0">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div class="lbl">A</div><div style="flex:1;display:flex;gap:4px"><div class="fader" id="m2a"></div><div class="meter" style="height:100%"><b style="height:35%"></b></div></div></div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px;width:80px">
+          <div class="lbl">MASTER</div>${knob(38,0.8)}
+          <div style="flex:1;display:flex;gap:4px"><div class="meter" style="height:100%"><b style="height:40%"></b></div><div class="meter" style="height:100%"><b style="height:42%"></b></div></div>
+          <div class="btn" style="flex:none;width:72px;height:28px;font-size:12px;color:var(--dim)">REC ●</div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px"><div class="lbl">B</div><div style="flex:1;display:flex;gap:4px"><div class="meter" style="height:100%"><b style="height:45%"></b></div><div class="fader" id="m2b"></div></div></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px"><span class="lbl">A</span><div class="xf" id="xf2" style="flex:1"></div><span class="lbl">B</span></div>
+    </div>`+canale('B',0.7,0,[0.5,0.5,0.5,0.5]);
+  fader('m2a',0.85);fader('m2b',0.7);xf('xf2',0.12);
+})();
+
+// --- schermata 3: pad grandi (hot cue sopra, loop sotto) per tutti e due i deck
+(function(){
+  const lato=(l,cues,loopOn)=>`<div style="flex:1;display:flex;flex-direction:column;gap:8px">
+     <div class="lbl" style="font-size:12px">DECK ${l} · HOT CUE</div>
+     <div style="flex:1;display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+       ${[0,1,2,3].map(i=>`<div class="pad" style="${cues[i]?`border-color:${cues[i]};box-shadow:inset 0 -4px 0 ${cues[i]}`:''}">${cues[i]?`<span class="c" style="background:${cues[i]}"></span>`:''}${i+1}<small>${cues[i]?'1:2'+i+'.4':'vuoto'}</small></div>`).join('')}
+     </div>
+     <div class="lbl" style="font-size:12px">LOOP</div>
+     <div style="flex:1;display:grid;grid-template-columns:1fr 2fr 1fr;gap:8px">
+       <div class="pad">◀<small>½</small></div><div class="pad" style="${loopOn?'border:2px solid var(--ok);color:var(--ok)':''};font-size:24px">4</div><div class="pad">▶<small>×2</small></div>
+     </div>
+   </div>`;
+  $('padGrandi').innerHTML=lato('A',['#FFB020','#3DDC84','#B07CFF',null],false)+`<div style="width:1px;background:var(--line)"></div>`+lato('B',[null,null,null,null],true);
+})();
+
+// --- schermata 4: FX grandi
+(function(){
+  const unita=(l,on,sc,kn,riga,rsel)=>`<div style="flex:1;display:flex;flex-direction:column;gap:5px;padding:6px 10px;background:var(--panel);border:1px solid var(--line);border-radius:14px">
+    <div style="display:flex;align-items:center"><div style="font-weight:800;font-size:13px">FX · DECK ${l}</div>
+      <div class="btn ${on?'on':''}" style="flex:none;margin-left:auto;width:58px;height:28px;font-size:13px">${on?'ON':'OFF'}</div></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+      ${['ECHO','DUB DELAY','REVERB','STRETCH'].map(n=>`<div class="btn" style="height:30px;font-size:12px;${n==sc?'border:2px solid var(--neutro)':'color:var(--dim)'}">${n}</div>`).join('')}
+    </div>
+    <div style="flex:1;display:flex;justify-content:space-evenly;align-items:center">
+      ${kn.map(([n,v,t],i)=>`<div style="display:flex;flex-direction:column;align-items:center;gap:3px">${knob(i?38:46,v)}<div class="mono" style="font-weight:700">${t}</div><div class="lbl">${n}</div></div>`).join('')}
+    </div>
+    <div class="lbl" style="text-align:center">${riga[0]}</div>
+    <div style="display:grid;grid-template-columns:repeat(${riga[1].length},1fr);gap:6px">
+      ${riga[1].map(v=>`<div class="btn ${v==rsel?'on':''}" style="height:30px;font-size:13px">${v}</div>`).join('')}
+    </div></div>`;
+  $('fxGrandi').innerHTML=unita('A',true,'DUB DELAY',[['DRY/WET',0.45,'45%'],['FEEDBACK',0.7,'70%'],['TONO',0.2,'scuro']],['TEMPO (BATTUTE)',['1/4','1/2','3/4','1','2']],'3/4')+
+    unita('B',false,'STRETCH',[['DRY/WET',1,'100%'],['GRANA',0.3,'43 ms'],['TONO',0.5,'fisso']],['RALLENTA · TONO FISSO',['½×','¼×','⅛×','FREEZE']],'½×');
+})();
+
+// quale schermata mostrare: ?s=1..4
+const n=new URLSearchParams(location.search).get('s')||'1';
+$('s'+n).classList.add('on');
+</script>
+</body>
+</html>
