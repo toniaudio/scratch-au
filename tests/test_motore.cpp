@@ -928,9 +928,10 @@ static void testEffetti() {
         const auto y = passaEffetto(e, in, [&](size_t i) { if (i >= static_cast<size_t>(0.5 * sr)) e.acceso = true; });
         verifica(tuttiFiniti(y) && piccoTra(y, 2.0, 3.0, sr) > 0.05f, "freeze: il suono resta anche col deck muto");
         e.acceso = false;
-        std::vector<float> silenzio(static_cast<size_t>(0.5 * sr), 0.0f);
+        std::vector<float> silenzio(static_cast<size_t>(1.5 * sr), 0.0f);
         const auto z = passaEffetto(e, silenzio, [](size_t) {});
-        verifica(piccoTra(z, 0.2, 0.5, sr) < 1e-3f, "freeze spento: torna il deck (muto)");
+        verifica(piccoTra(z, 0.0, 0.1, sr) > 0.05f, "freeze spento: sfuma (non si stacca di colpo)");
+        verifica(piccoTra(z, 1.0, 1.5, sr) < 1e-3f, "freeze spento: poi torna il deck (muto)");
     }
 }
 

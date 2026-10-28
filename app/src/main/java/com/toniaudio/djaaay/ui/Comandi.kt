@@ -8,6 +8,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -406,13 +407,21 @@ fun Tasto(
 
 /** Schede a "pillola" (HOT CUE · LOOP · FX, MIXER · FX, schede delle opzioni). */
 @Composable
-fun Schede(voci: List<String>, scelta: Int, onScegli: (Int) -> Unit, modifier: Modifier = Modifier, dimensione: TextUnit = 9.sp) {
+fun Schede(
+    voci: List<String>,
+    scelta: Int,
+    onScegli: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    dimensione: TextUnit = 9.sp,
+    altezza: Dp? = null,  // se data, le voci riempiono tutta l'altezza (tasti più facili da prendere)
+) {
     val scegli by rememberUpdatedState(onScegli)
-    Row(modifier.background(Colori.Pannello, RoundedCornerShape(7.dp)).padding(2.dp)) {
+    Row(modifier.then(if (altezza != null) Modifier.height(altezza) else Modifier).background(Colori.Pannello, RoundedCornerShape(7.dp)).padding(2.dp)) {
         voci.forEachIndexed { i, v ->
             Box(
                 Modifier
                     .weight(1f)
+                    .then(if (altezza != null) Modifier.fillMaxHeight() else Modifier)
                     .background(if (i == scelta) Colori.Pannello2 else Color.Transparent, RoundedCornerShape(5.dp))
                     .pointerInput(i) { detectTapGestures { scegli(i) } }
                     .padding(vertical = 3.dp),

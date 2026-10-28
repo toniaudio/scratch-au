@@ -195,6 +195,7 @@ class Controllore(
         val fx = stato.deck[d].fx
         fx.acceso = acceso
         fx.momentaneo = false
+        if (!acceso) fx.hold = false
         ponte.impostaFx(d, ParFx.ACCESO, fx.tipo, if (acceso) 1f else 0f)
     }
 
@@ -244,6 +245,53 @@ class Controllore(
 
     fun fxPadRilascia(d: Int) {
         if (stato.deck[d].fx.momentaneo) fxAcceso(d, false)
+    }
+
+    /** Tasto PAD dell'unità FX: trackpad al posto delle manopole (o di nuovo le manopole). */
+    fun fxPad(d: Int) {
+        val fx = stato.deck[d].fx
+        fx.padAperto = !fx.padAperto
+    }
+
+    /**
+     * Trackpad: X = dry/wet, Y = il parametro principale dell'effetto. Il dito appoggiato accende l'effetto,
+     * staccandolo l'effetto svanisce con la sua coda. Se era già acceso (dal pad FX del deck) resta acceso.
+     */
+    fun fxTrackpadGiu(d: Int, x: Float, y: Float) {
+        val fx = stato.deck[d].fx
+        fx.toccato = true
+        when {
+            fx.hold -> {
+                // bloccato: questo tocco lo libera, e alzando il dito svanisce
+                fx.hold = false
+                fx.spegniAlRilascio = true
+            }
+            !fx.acceso -> {
+                fxAcceso(d, true)
+                fx.spegniAlRilascio = true
+            }
+            else -> fx.spegniAlRilascio = false
+        }
+        fxTrackpadSposta(d, x, y)
+    }
+
+    fun fxTrackpadSposta(d: Int, x: Float, y: Float) {
+        val fx = stato.deck[d].fx
+        fxManopola(d, 0, x)
+        fxManopola(d, EFFETTI[fx.tipo].asseY, y)
+    }
+
+    /** Un secondo dito sul trackpad: l'effetto resta acceso anche staccando le dita. */
+    fun fxTrackpadTieni(d: Int) {
+        val fx = stato.deck[d].fx
+        if (fx.acceso) fx.hold = true
+    }
+
+    fun fxTrackpadSu(d: Int) {
+        val fx = stato.deck[d].fx
+        fx.toccato = false
+        if (!fx.hold && fx.spegniAlRilascio) fxAcceso(d, false)
+        fx.spegniAlRilascio = false
     }
 
     /** Manda al motore tutte le regolazioni degli effetti (all'avvio). */
@@ -326,6 +374,7 @@ class Controllore(
 
     // ------------------------------------------------------------------ libreria
     fun apriLibreria(d: Int) {
+        stato.vista = 0  // telefono: la libreria si apre nella vista dei deck
         val deck = stato.deck[d]
         deck.libreriaAperta = !deck.libreriaAperta
         if (deck.libreriaAperta) {

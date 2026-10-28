@@ -106,6 +106,7 @@ private:
     double sr_ = 48000.0;
     float kRampa_ = 0.0f;   // smoothing per campione (~15 ms) di mandate e livelli
     float kTempo_ = 0.0f;   // smoothing del tempo di ritardo (~80 ms: cambiando tempo l'eco "scivola")
+    float kCodaStretch_ = 0.0f;  // spegnendo lo STRETCH il suono torna quello del deck in dissolvenza (~0,5 s)
 
     // Mandate (quanto segnale entra nell'effetto), livelli e "vita" delle code
     float mandata_[3] = {0.0f, 0.0f, 0.0f};  // echo, dub, reverb

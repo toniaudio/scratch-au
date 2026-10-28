@@ -35,8 +35,9 @@ import com.toniaudio.djaaay.StatoDeck
 /** In alto: per deck libreria (all'estremità), lettera, titolo, BPM, tempo che manca. Al centro DVS = opzioni. */
 @Composable
 fun BarraAlta(app: StatoApp, c: Controllore, modifier: Modifier = Modifier) {
+    val telefono = LocalMisure.current.telefono
     Row(
-        modifier.fillMaxWidth().height(34.dp).background(Colori.Barra).padding(horizontal = 10.dp),
+        modifier.fillMaxWidth().height(if (telefono) 38.dp else 34.dp).background(Colori.Barra).padding(horizontal = if (telefono) 6.dp else 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -48,7 +49,7 @@ fun BarraAlta(app: StatoApp, c: Controllore, modifier: Modifier = Modifier) {
                 .pointerInput(Unit) { detectTapGestures { c.apriOpzioni() } }
                 .padding(horizontal = 14.dp, vertical = 3.dp),
         ) {
-            Text("DVS", color = Colori.Testo, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
+            Text("DVS", color = Colori.Testo, fontSize = if (telefono) 17.sp else 15.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
         }
         InfoDeck(app, app.deck[1], c, Modifier.weight(1f))
     }
@@ -57,16 +58,17 @@ fun BarraAlta(app: StatoApp, c: Controllore, modifier: Modifier = Modifier) {
 @Composable
 private fun InfoDeck(app: StatoApp, deck: StatoDeck, c: Controllore, modifier: Modifier) {
     val b = deck.indice == 1
+    val telefono = LocalMisure.current.telefono
     Row(modifier.fillMaxHeight(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         val libreria = @Composable {
             Assegnabile(app, c, AzioneMidi.LIB_APRI, deck.indice) {
                 Box(
                     Modifier
-                        .size(width = 30.dp, height = 26.dp)
+                        .size(width = if (telefono) 42.dp else 30.dp, height = if (telefono) 32.dp else 26.dp)
                         .background(if (deck.libreriaAperta) Colori.Neutro else Colori.Pannello2, RoundedCornerShape(7.dp))
                         .pointerInput(Unit) { detectTapGestures { c.apriLibreria(deck.indice) } },
                     contentAlignment = Alignment.Center,
-                ) { IconaLibreria(if (deck.libreriaAperta) Colori.Sfondo else Colori.Testo) }
+                ) { IconaLibreria(if (deck.libreriaAperta) Colori.Sfondo else Colori.Testo, if (telefono) 19.dp else 15.dp) }
             }
         }
         val lettera = @Composable {
@@ -80,13 +82,13 @@ private fun InfoDeck(app: StatoApp, deck: StatoDeck, c: Controllore, modifier: M
                 Text(
                     brano?.titolo ?: if (deck.caricamento != null) "Caricamento…" else "Nessun brano",
                     color = if (brano != null) Colori.Testo else Colori.Spento,
-                    fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    fontSize = if (telefono) 13.5.sp else 11.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     textAlign = if (b) TextAlign.End else TextAlign.Start,
                 )
                 if (brano != null) {
                     Text(
                         listOf(brano.artista, durata(brano.durataMs / 1000.0)).filter { it.isNotEmpty() }.joinToString(" · "),
-                        color = Colori.Spento, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        color = Colori.Spento, fontSize = if (telefono) 11.5.sp else 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -94,27 +96,28 @@ private fun InfoDeck(app: StatoApp, deck: StatoDeck, c: Controllore, modifier: M
         val tempo = @Composable {
             Column(horizontalAlignment = if (b) Alignment.Start else Alignment.End) {
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text(if (deck.bpm > 0) "%.1f".format(deck.bpmEffettivi) else "—", color = Colori.Testo, fontSize = 13.sp,
+                    Text(if (deck.bpm > 0) "%.1f".format(deck.bpmEffettivi) else "—", color = Colori.Testo, fontSize = if (telefono) 16.sp else 13.sp,
                         fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                     Text(" BPM", color = Colori.Spento, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
                 }
                 Text(
                     if (deck.brano != null) "-" + durata(deck.durata - deck.posizione) else "",
-                    color = Colori.Spento, fontSize = 10.5.sp, fontFamily = FontFamily.Monospace,
+                    color = Colori.Spento, fontSize = if (telefono) 12.sp else 10.5.sp, fontFamily = FontFamily.Monospace,
                 )
             }
         }
+        // sul telefono niente lettera del deck: il colore della waveform e la posizione bastano
         if (!b) {
-            libreria(); lettera(); titolo(Modifier.weight(1f)); tempo()
+            libreria(); if (!telefono) lettera(); titolo(Modifier.weight(1f)); tempo()
         } else {
-            tempo(); titolo(Modifier.weight(1f)); lettera(); libreria()
+            tempo(); titolo(Modifier.weight(1f)); if (!telefono) lettera(); libreria()
         }
     }
 }
 
 @Composable
-private fun IconaLibreria(colore: androidx.compose.ui.graphics.Color) {
-    Canvas(Modifier.size(15.dp)) {
+private fun IconaLibreria(colore: androidx.compose.ui.graphics.Color, lato: androidx.compose.ui.unit.Dp) {
+    Canvas(Modifier.size(lato)) {
         val s = 2.dp.toPx()
         val w = size.width
         val h = size.height

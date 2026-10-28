@@ -307,4 +307,35 @@ class ControlloreTest {
         assertTrue(altro.stato.dvs.assoluta)
         assertEquals(6f, altroPonte.dvs[ParDvs.GUADAGNO])
     }
+
+    @Test
+    fun trackpadFxToccoHoldERitocco() {
+        c.fxTipo(0, 1)  // DUB DELAY: Y = feedback
+        c.fxTrackpadGiu(0, 0.3f, 0.8f)
+        assertTrue(stato.deck[0].fx.acceso)
+        assertEquals(0.3f, stato.deck[0].fx.dryWet[1])
+        assertEquals(0.8f, stato.deck[0].fx.param1[1])
+        c.fxTrackpadSposta(0, 0.6f, 0.2f)
+        assertEquals(0.6f, ponte.fx[Triple(0, ParFx.DRY_WET, 1)])
+        c.fxTrackpadSu(0)  // dito alzato: si spegne (il motore lascia la coda)
+        assertEquals(false, stato.deck[0].fx.acceso)
+        // hold: secondo dito, poi si alzano tutte e due
+        c.fxTrackpadGiu(0, 0.5f, 0.5f)
+        c.fxTrackpadTieni(0)
+        c.fxTrackpadSu(0)
+        assertTrue(stato.deck[0].fx.acceso)
+        assertTrue(stato.deck[0].fx.hold)
+        // ritocco: al rilascio svanisce
+        c.fxTrackpadGiu(0, 0.5f, 0.5f)
+        assertEquals(false, stato.deck[0].fx.hold)
+        assertTrue(stato.deck[0].fx.acceso)
+        c.fxTrackpadSu(0)
+        assertEquals(false, stato.deck[0].fx.acceso)
+        // già acceso dal pad del deck: il trackpad lo modula e non lo spegne
+        c.fxPadTocco(0, 3)  // STRETCH: Y = tono
+        c.fxTrackpadGiu(0, 1f, 1f)
+        assertEquals(1f, stato.deck[0].fx.param2[3])
+        c.fxTrackpadSu(0)
+        assertTrue(stato.deck[0].fx.acceso)
+    }
 }

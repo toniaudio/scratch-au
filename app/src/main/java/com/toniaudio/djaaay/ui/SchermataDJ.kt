@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,13 +31,26 @@ import com.toniaudio.djaaay.StatoApp
 import com.toniaudio.djaaay.nomeComando
 import kotlinx.coroutines.delay
 
-/** La schermata principale, come nelle bozze in design/. */
+/**
+ * La schermata principale, come nelle bozze in design/. Su uno schermo basso (telefono in orizzontale) sotto le
+ * waveform c'è una vista alla volta (DECK · MIXER · PAD · FX) con comandi più grandi; su tablet tutto insieme.
+ */
 @Composable
 fun SchermataDJ(app: StatoApp, c: Controllore) {
-    Box(Modifier.fillMaxSize().background(Colori.Sfondo)) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(Colori.Sfondo)) {
+        val telefono = maxHeight < 500.dp
+        CompositionLocalProvider(LocalMisure provides if (telefono) MISURE_GRANDI else MISURE_NORMALI) {
+            Corpo(app, c, telefono)
+        }
+    }
+}
+
+@Composable
+private fun Corpo(app: StatoApp, c: Controllore, telefono: Boolean) {
+    Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             BarraAlta(app, c)
-            Box(Modifier.fillMaxWidth().height(132.dp)) {
+            Box(Modifier.fillMaxWidth().height(if (telefono) 100.dp else 132.dp)) {
                 Column(Modifier.fillMaxSize()) {
                     for (d in 0..1) {
                         WaveformDeck(
@@ -54,10 +69,14 @@ fun SchermataDJ(app: StatoApp, c: Controllore) {
                     drawLine(Color.White, Offset(size.width / 2, 0f), Offset(size.width / 2, size.height), 2.dp.toPx())
                 }
             }
-            Row(Modifier.weight(1f).fillMaxWidth()) {
-                PannelloDeck(app, 0, c, Modifier.weight(0.33f))
-                PannelloMixer(app, c, Modifier.weight(0.34f))
-                PannelloDeck(app, 1, c, Modifier.weight(0.33f))
+            if (telefono) {
+                CorpoTelefono(app, c, Modifier.weight(1f).fillMaxWidth())
+            } else {
+                Row(Modifier.weight(1f).fillMaxWidth()) {
+                    PannelloDeck(app, 0, c, Modifier.weight(0.33f))
+                    PannelloMixer(app, c, Modifier.weight(0.34f))
+                    PannelloDeck(app, 1, c, Modifier.weight(0.33f))
+                }
             }
         }
         if (app.midi.learn || app.midi.procedura != null) BarraLearn(app, c)

@@ -50,15 +50,16 @@ class DescrizioneFx(
     val titoloRiga: String,
     val voci: List<String>,
     val indici: List<Int>,
+    val asseY: Int,  // parametro sull'asse Y del trackpad: 1 o 2 (l'asse X è il dry/wet)
 )
 
 /** I quattro effetti, nello stesso ordine di TipoEffetto in engine/Effetti.h. */
 val EFFETTI = listOf(
     // tempi in battiti: indici di kBattute = ⅛ ¼ ½ ¾ 1 2 4
-    DescrizioneFx("ECHO", "ECHO", listOf("FEEDBACK"), "TEMPO (BATTUTE)", listOf("1/8", "1/4", "1/2", "1", "2"), listOf(0, 1, 2, 4, 5)),
-    DescrizioneFx("DUB DELAY", "DUB", listOf("FEEDBACK", "TONO"), "TEMPO (BATTUTE)", listOf("1/4", "1/2", "3/4", "1", "2"), listOf(1, 2, 3, 4, 5)),
-    DescrizioneFx("REVERB", "VERB", listOf("STANZA", "DAMP"), "CODA", listOf("corta", "media", "lunga"), listOf(0, 1, 2)),
-    DescrizioneFx("STRETCH", "STRETCH", listOf("GRANA", "TONO"), "RALLENTA · TONO FISSO", listOf("½×", "¼×", "⅛×", "FREEZE"), listOf(0, 1, 2, 3)),
+    DescrizioneFx("ECHO", "ECHO", listOf("FEEDBACK"), "TEMPO (BATTUTE)", listOf("1/8", "1/4", "1/2", "1", "2"), listOf(0, 1, 2, 4, 5), 1),
+    DescrizioneFx("DUB DELAY", "DUB", listOf("FEEDBACK", "TONO"), "TEMPO (BATTUTE)", listOf("1/4", "1/2", "3/4", "1", "2"), listOf(1, 2, 3, 4, 5), 1),
+    DescrizioneFx("REVERB", "VERB", listOf("STANZA", "DAMP"), "CODA", listOf("corta", "media", "lunga"), listOf(0, 1, 2), 1),
+    DescrizioneFx("STRETCH", "STRETCH", listOf("GRANA", "TONO"), "RALLENTA · TONO FISSO", listOf("½×", "¼×", "⅛×", "FREEZE"), listOf(0, 1, 2, 3), 2),
 )
 
 /** Testo sotto una manopola dell'effetto: `quale` 0 = DRY/WET, 1 e 2 = parametri. */
@@ -83,6 +84,10 @@ class StatoFx {
     val param2 = mutableStateListOf(0f, 0.2f, 0.5f, 0.5f)
     val scelta = mutableStateListOf(1, 3, 2, 0)  // indice nel motore (vedi DescrizioneFx.indici)
     var momentaneo = false  // acceso tenendo premuto il pad: si spegne al rilascio
+    var padAperto by mutableStateOf(false)  // trackpad al posto delle manopole
+    var hold by mutableStateOf(false)       // trackpad bloccato (secondo dito): resta acceso finché non si ritocca
+    var toccato by mutableStateOf(false)    // un dito sul trackpad
+    var spegniAlRilascio = false
 }
 
 class StatoDeck(val indice: Int) {
@@ -204,6 +209,7 @@ class StatoDvs {
 }
 
 class StatoApp {
+    var vista by mutableIntStateOf(0)  // telefono: 0 DECK, 1 MIXER, 2 PAD, 3 FX
     val midi = StatoMidi()
     val dvs = StatoDvs()
     val deck = listOf(StatoDeck(0), StatoDeck(1))

@@ -1,6 +1,11 @@
 package com.toniaudio.djaaay.ui
 
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /** Colori decisi nelle bozze (design/): interfaccia neutra, colore solo nelle waveform e al centro dei dischi. */
 object Colori {
@@ -29,3 +34,25 @@ object Colori {
     fun deck(i: Int) = if (i == 0) DeckA else DeckB
     fun deckBassi(i: Int) = if (i == 0) DeckABassi else DeckBBassi
 }
+
+/** Misure dei comandi del deck: normali (tablet, schermo alto) o grandi (telefono: meno cose, più grandi). */
+data class Misure(
+    val telefono: Boolean,
+    val tasto: Dp, val testoTasto: TextUnit,        // CUE, Play, SYNC
+    val pad: Dp, val testoPad: TextUnit,            // hot cue, loop, FX del deck
+    val schede: TextUnit, val key: TextUnit,
+    val pitch: Dp, val faderPitch: Dp, val capPitch: Dp, val testoPitch: TextUnit,
+    val dvsL: Dp, val dvsH: Dp, val testoDvs: TextUnit,
+)
+
+val MISURE_NORMALI = Misure(
+    telefono = false, tasto = 26.dp, testoTasto = 10.5.sp, pad = 24.dp, testoPad = 9.5.sp, schede = 9.sp, key = 9.5.sp,
+    pitch = 52.dp, faderPitch = 30.dp, capPitch = 22.dp, testoPitch = 10.sp, dvsL = 44.dp, dvsH = 22.dp, testoDvs = 8.sp,
+)
+
+val MISURE_GRANDI = Misure(
+    telefono = true, tasto = 44.dp, testoTasto = 14.sp, pad = 38.dp, testoPad = 13.sp, schede = 11.sp, key = 12.sp,
+    pitch = 56.dp, faderPitch = 44.dp, capPitch = 34.dp, testoPitch = 12.sp, dvsL = 54.dp, dvsH = 30.dp, testoDvs = 10.5.sp,
+)
+
+val LocalMisure = staticCompositionLocalOf { MISURE_NORMALI }

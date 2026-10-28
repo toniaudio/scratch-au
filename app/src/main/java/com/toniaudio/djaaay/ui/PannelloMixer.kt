@@ -155,7 +155,7 @@ private fun ColonnaMaster(app: StatoApp, c: Controllore) {
     }
 }
 
-private fun tempoRec(secondi: Double): String {
+internal fun tempoRec(secondi: Double): String {
     val s = secondi.toInt()
     return "%d:%02d".format(s / 60, s % 60)
 }

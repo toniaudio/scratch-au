@@ -38,6 +38,7 @@ import com.toniaudio.djaaay.etichettaLoop
 @Composable
 fun PannelloDeck(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = Modifier) {
     val deck = app.deck[d]
+    val m = LocalMisure.current
     Box(modifier.fillMaxHeight().padding(horizontal = 10.dp, vertical = 6.dp)) {
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (d == 1) ColonnaPitch(app, d, c)
@@ -59,23 +60,23 @@ fun PannelloDeck(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = Mod
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Assegnabile(app, c, AzioneMidi.CUE, d, Modifier.weight(1f).height(26.dp)) {
+                    Assegnabile(app, c, AzioneMidi.CUE, d, Modifier.weight(1f).height(m.tasto)) {
                         Tasto(Modifier.fillMaxSize(), onPremi = { c.cueGiu(d) }, onRilascia = { c.cueSu(d) }) {
-                            Etichetta("CUE", Colori.Testo, 10.5.sp)
+                            Etichetta("CUE", Colori.Testo, m.testoTasto)
                         }
                     }
-                    Assegnabile(app, c, AzioneMidi.PLAY, d, Modifier.weight(1f).height(26.dp)) {
+                    Assegnabile(app, c, AzioneMidi.PLAY, d, Modifier.weight(1f).height(m.tasto)) {
                         Tasto(Modifier.fillMaxSize(), acceso = deck.inPlay, onTocco = { c.playPausa(d) }) {
-                            SimboloPlay(deck.inPlay)
+                            SimboloPlay(deck.inPlay, if (m.telefono) 16.dp else 12.dp)
                         }
                     }
-                    Assegnabile(app, c, AzioneMidi.SYNC, d, Modifier.weight(1f).height(26.dp)) {
+                    Assegnabile(app, c, AzioneMidi.SYNC, d, Modifier.weight(1f).height(m.tasto)) {
                         Tasto(Modifier.fillMaxSize(), onTocco = { c.sync(d) }) {
-                            Etichetta("SYNC", Colori.Testo, 10.5.sp)
+                            Etichetta("SYNC", Colori.Testo, m.testoTasto)
                         }
                     }
                 }
-                Schede(listOf("HOT CUE", "LOOP", "FX"), deck.tabPad, { deck.tabPad = it }, Modifier.fillMaxWidth())
+                Schede(listOf("HOT CUE", "LOOP", "FX"), deck.tabPad, { deck.tabPad = it }, Modifier.fillMaxWidth(), m.schede)
                 Pad(app, d, c)
             }
             if (d == 0) ColonnaPitch(app, d, c)
@@ -85,8 +86,8 @@ fun PannelloDeck(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = Mod
 }
 
 @Composable
-private fun SimboloPlay(inPlay: Boolean) {
-    Canvas(Modifier.size(12.dp)) {
+private fun SimboloPlay(inPlay: Boolean, lato: androidx.compose.ui.unit.Dp) {
+    Canvas(Modifier.size(lato)) {
         val colore = if (inPlay) Colori.Sfondo else Colori.Testo
         if (inPlay) {
             drawRect(colore, Offset(size.width * 0.15f, 0f), androidx.compose.ui.geometry.Size(size.width * 0.25f, size.height))
@@ -101,11 +102,13 @@ private fun SimboloPlay(inPlay: Boolean) {
 @Composable
 private fun TastoKey(acceso: Boolean, onTocco: () -> Unit, modifier: Modifier = Modifier) {
     val colore = if (acceso) Colori.Verde else Colori.Scuro
+    val m = LocalMisure.current
+    val scala = if (m.telefono) 1.3f else 1f
     Row(
         modifier.pointerInput(Unit) { detectTapGestures { onTocco() } }.padding(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Canvas(Modifier.size(width = 9.dp, height = 11.dp)) {
+        Canvas(Modifier.size(width = 9.dp * scala, height = 11.dp * scala)) {
             val w = size.width
             val h = size.height
             drawArc(colore, 180f, 180f, false, Offset(w * 0.18f, 0f), androidx.compose.ui.geometry.Size(w * 0.64f, h * 0.7f),
@@ -113,14 +116,15 @@ private fun TastoKey(acceso: Boolean, onTocco: () -> Unit, modifier: Modifier = 
             drawRect(colore, Offset(0f, h * 0.42f), androidx.compose.ui.geometry.Size(w, h * 0.58f))
         }
         Spacer(Modifier.width(3.dp))
-        Etichetta("KEY", colore, 9.5.sp)
+        Etichetta("KEY", colore, m.key)
     }
 }
 
 @Composable
 private fun Pad(app: StatoApp, d: Int, c: Controllore) {
     val deck = app.deck[d]
-    val altezza = Modifier.height(24.dp)
+    val m = LocalMisure.current
+    val altezza = Modifier.height(m.pad)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
         when (deck.tabPad) {
             0 -> for (i in 0 until 4) {
@@ -132,7 +136,7 @@ private fun Pad(app: StatoApp, d: Int, c: Controllore) {
                                 Canvas(Modifier.size(5.dp)) { drawCircle(Colori.HotCue[i]) }
                                 Spacer(Modifier.width(4.dp))
                             }
-                            Etichetta("${i + 1}", if (punto != null) Colori.Testo else Colori.Spento, 9.5.sp)
+                            Etichetta("${i + 1}", if (punto != null) Colori.Testo else Colori.Spento, m.testoPad)
                         }
                     }
                 }
@@ -150,7 +154,7 @@ private fun Pad(app: StatoApp, d: Int, c: Controllore) {
                         Text(
                             etichettaLoop(LUNGHEZZE_LOOP[deck.loopIndice]),
                             color = if (deck.loopAttivo) Colori.Verde else Colori.Testo,
-                            fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.ExtraBold,
+                            fontSize = if (m.telefono) 18.sp else 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.ExtraBold,
                         )
                     }
                 }
@@ -168,7 +172,7 @@ private fun Pad(app: StatoApp, d: Int, c: Controllore) {
                         onTocco = { c.fxPadTocco(d, t) },
                         onTieni = { c.fxPadTieni(d, t) },
                         onRilascia = { c.fxPadRilascia(d) },
-                    ) { Etichetta(e.corto, if (acceso) Colori.Testo else Colori.Scuro, 8.sp) }
+                    ) { Etichetta(e.corto, if (acceso) Colori.Testo else Colori.Scuro, if (m.telefono) 11.sp else 8.sp) }
                 }
             }
         }
@@ -176,8 +180,8 @@ private fun Pad(app: StatoApp, d: Int, c: Controllore) {
 }
 
 @Composable
-private fun Freccia(sinistra: Boolean) {
-    Canvas(Modifier.size(10.dp)) {
+internal fun Freccia(sinistra: Boolean, lato: androidx.compose.ui.unit.Dp = if (LocalMisure.current.telefono) 14.dp else 10.dp) {
+    Canvas(Modifier.size(lato)) {
         val p = Path()
         if (sinistra) { p.moveTo(size.width * 0.75f, 0f); p.lineTo(size.width * 0.15f, size.height / 2); p.lineTo(size.width * 0.75f, size.height) }
         else { p.moveTo(size.width * 0.25f, 0f); p.lineTo(size.width * 0.85f, size.height / 2); p.lineTo(size.width * 0.25f, size.height) }
@@ -190,36 +194,37 @@ private fun Freccia(sinistra: Boolean) {
 @Composable
 private fun ColonnaPitch(app: StatoApp, d: Int, c: Controllore) {
     val deck = app.deck[d]
+    val m = LocalMisure.current
     val escursione = app.opzioni.escursione / 100f
     Column(
-        Modifier.width(52.dp).fillMaxHeight(),
+        Modifier.width(m.pitch).fillMaxHeight(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Etichetta("PITCH", Colori.Spento, 8.5.sp)
+        Etichetta("PITCH", Colori.Spento, if (m.telefono) 10.5.sp else 8.5.sp)
         // in alto = più veloce
         Assegnabile(app, c, AzioneMidi.PITCH, d, Modifier.weight(1f)) {
             FaderVerticale(
                 valore = 0.5f + deck.pitch / (2 * escursione),
                 onCambia = { c.impostaPitch(d, (it - 0.5f) * 2 * escursione) },
                 centrale = true,
-                larghezza = 30.dp,
-                cappuccio = 22.dp,
+                larghezza = m.faderPitch,
+                cappuccio = m.capPitch,
                 modifier = Modifier.fillMaxHeight(),
             )
         }
-        Numero("%+.1f%%".format(deck.pitch * 100), dimensione = 10.sp)
+        Numero("%+.1f%%".format(deck.pitch * 100), dimensione = m.testoPitch)
         // DVS acceso: il deck segue il vinile timecode
         Assegnabile(app, c, AzioneMidi.DVS, d) {
-            Tasto(Modifier.width(44.dp).height(22.dp), acceso = deck.dvs, onTocco = { c.dvs(d) }) {
+            Tasto(Modifier.width(m.dvsL).height(m.dvsH), acceso = deck.dvs, onTocco = { c.dvs(d) }) {
                 val colore = if (deck.dvs) Colori.Sfondo else Colori.Spento
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Canvas(Modifier.size(9.dp)) {
+                    Canvas(Modifier.size(if (m.telefono) 11.dp else 9.dp)) {
                         drawCircle(colore, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
                         drawCircle(colore, size.minDimension * 0.18f)
                     }
                     Spacer(Modifier.width(3.dp))
-                    Etichetta("DVS", colore, 8.sp)
+                    Etichetta("DVS", colore, m.testoDvs)
                 }
             }
         }

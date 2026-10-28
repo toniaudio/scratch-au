@@ -57,6 +57,7 @@ void Effetto::prepara(double sampleRate) {
     const float sr = static_cast<float>(sampleRate);
     kRampa_ = coeffSmooth(0.015f, sr);
     kTempo_ = coeffSmooth(0.08f, sr);
+    kCodaStretch_ = coeffSmooth(0.15f, sr);
     coeffLpEco_ = std::exp(-2.0f * kPi * 9000.0f / sr);
 
     const int linea = static_cast<int>(kLinea * sampleRate) + 8;
@@ -291,7 +292,8 @@ void Effetto::pezzo(float* l, float* r, int n) {
                 ++g.eta;
             }
             lettura_ += rapporto;
-            pesoStretch_ = verso(pesoStretch_, bersaglio, kRampa_);
+            // entra in fretta, esce in dissolvenza (niente stacco secco quando si alza il dito)
+            pesoStretch_ = verso(pesoStretch_, bersaglio, bersaglio > pesoStretch_ ? kRampa_ : kCodaStretch_);
             wet_[kStretch] = verso(wet_[kStretch], w[kStretch], kRampa_);
             const float ps = pesoStretch_ * wet_[kStretch];
             // il suono del deck sfuma verso lo stretch (sommato alle code degli altri effetti)
