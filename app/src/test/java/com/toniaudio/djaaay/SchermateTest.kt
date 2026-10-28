@@ -89,6 +89,26 @@ class SchermateTest {
         c.fxPadTocco(1, 2)
     }
 
+    @Test fun midiLearn() = foto("8-midi-learn") { s, c ->
+        c.midiCollegato("M-Audio X-Session Pro")
+        c.learnAttiva(true)
+        c.learnScegli(AzioneMidi.CROSSFADER, 0)
+    }
+
+    @Test fun opzioniMidi() = foto("9-opzioni-midi") { s, c ->
+        c.midiCollegato("M-Audio X-Session Pro")
+        c.learnScegli(AzioneMidi.CROSSFADER, 0)
+        c.midi(MessaggioMidi(SorgenteMidi(false, 0, 8), 64))
+        c.learnScegli(AzioneMidi.VOLUME, 0)
+        c.midi(MessaggioMidi(SorgenteMidi(false, 0, 1), 100))
+        c.learnScegli(AzioneMidi.PLAY, 0)
+        c.midi(MessaggioMidi(SorgenteMidi(true, 0, 46), 127))
+        c.learnScegli(AzioneMidi.GAIN, 0)
+        s.messaggio = null
+        s.opzioniAperte = true
+        s.schedaOpzioni = 2
+    }
+
     @Test fun vuoto() = foto("7-appena-aperta") { s, _ ->
         for (d in s.deck) { d.brano = null; d.waveform = null; d.bpm = 0.0; d.posizione = 0.0; d.durata = 0.0; d.inPlay = false; d.livello = 0f }
         s.deck[1].caricamento = 0.4f

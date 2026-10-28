@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -20,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.toniaudio.djaaay.AzioneMidi
 import com.toniaudio.djaaay.Controllore
 import com.toniaudio.djaaay.EFFETTI
 import com.toniaudio.djaaay.StatoApp
@@ -46,8 +48,10 @@ private fun UnitaFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = 
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Etichetta("FX · DECK ${app.deck[d].lettera}", Colori.Testo, 8.5.sp)
             Spacer(Modifier.weight(1f))
-            Tasto(Modifier.width(30.dp).height(16.dp), acceso = fx.acceso, onTocco = { c.fxOnOff(d) }) {
-                Etichetta(if (fx.acceso) "ON" else "OFF", if (fx.acceso) Colori.Sfondo else Colori.Spento, 7.5.sp)
+            Assegnabile(app, c, AzioneMidi.FX_ON, d) {
+                Tasto(Modifier.width(30.dp).height(16.dp), acceso = fx.acceso, onTocco = { c.fxOnOff(d) }) {
+                    Etichetta(if (fx.acceso) "ON" else "OFF", if (fx.acceso) Colori.Sfondo else Colori.Spento, 7.5.sp)
+                }
             }
         }
         Spacer(Modifier.height(3.dp))
@@ -57,12 +61,14 @@ private fun UnitaFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = 
                 for (colonna in 0..1) {
                     val i = riga * 2 + colonna
                     val scelto = i == t
-                    Tasto(
-                        Modifier.weight(1f).height(17.dp),
-                        bordo = if (scelto) Colori.Neutro else null,
-                        onTocco = { c.fxTipo(d, i) },
-                    ) {
-                        Etichetta(EFFETTI[i].nome, if (scelto) Colori.Testo else Colori.Spento, 7.sp)
+                    Assegnabile(app, c, AzioneMidi.FX_SUCCESSIVO, d, Modifier.weight(1f).height(17.dp)) {
+                        Tasto(
+                            Modifier.fillMaxSize(),
+                            bordo = if (scelto) Colori.Neutro else null,
+                            onTocco = { c.fxTipo(d, i) },
+                        ) {
+                            Etichetta(EFFETTI[i].nome, if (scelto) Colori.Testo else Colori.Spento, 7.sp)
+                        }
                     }
                 }
             }
@@ -70,10 +76,14 @@ private fun UnitaFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = 
         Spacer(Modifier.weight(1f))
         // manopole: DRY/WET grande, poi i parametri dell'effetto
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Bottom) {
-            ManopolaFx(fx.dryWet[t], "DRY/WET", testoFx(t, 0, fx.dryWet[t]), 24) { c.fxManopola(d, 0, it) }
+            Assegnabile(app, c, AzioneMidi.FX_DRY_WET, d) {
+                ManopolaFx(fx.dryWet[t], "DRY/WET", testoFx(t, 0, fx.dryWet[t]), 24) { c.fxManopola(d, 0, it) }
+            }
             descr.parametri.forEachIndexed { k, nome ->
                 val valore = if (k == 0) fx.param1[t] else fx.param2[t]
-                ManopolaFx(valore, nome, testoFx(t, k + 1, valore), 18) { c.fxManopola(d, k + 1, it) }
+                Assegnabile(app, c, if (k == 0) AzioneMidi.FX_PARAM1 else AzioneMidi.FX_PARAM2, d) {
+                    ManopolaFx(valore, nome, testoFx(t, k + 1, valore), 18) { c.fxManopola(d, k + 1, it) }
+                }
             }
         }
         Spacer(Modifier.height(2.dp))

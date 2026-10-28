@@ -30,6 +30,7 @@ class MainActivity : ComponentActivity() {
     private val stato = StatoApp()
     private lateinit var piattaforma: PiattaformaAndroid
     private lateinit var controllore: Controllore
+    private var midi: MidiUsb? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,6 +56,7 @@ class MainActivity : ComponentActivity() {
         Motore.impostaBuffer(stato.opzioni.buffer)
         if (!audioOk) controllore.mostra("Audio non disponibile: riavvia l'app")
         controllore.aggiornaLibreria()
+        midi = MidiUsb(this, { controllore.midi(it) }, { controllore.midiCollegato(it) }).also { it.avvia() }
 
         setContent {
             // a ogni fotogramma: posizione dei deck, livelli, REC
@@ -66,6 +68,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        midi?.ferma()
         // Chiusura vera dell'app (non una rotazione): si ferma il servizio, che spegne audio e registrazione
         if (isFinishing) stopService(Intent(this, ServizioAudio::class.java))
         super.onDestroy()

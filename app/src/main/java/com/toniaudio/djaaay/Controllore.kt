@@ -48,6 +48,7 @@ class Controllore(
         caricaOpzioni()
         applicaOpzioni()
         applicaFx()
+        caricaMidi()
         stato.permessoLibreria = piattaforma.haPermessoLibreria()
         stato.recenti = piattaforma.leggiPreferenza("recenti")?.split(',')?.mapNotNull { it.toLongOrNull() } ?: emptyList()
         stato.bpmNoti = piattaforma.leggiPreferenza("bpm")?.split(';')?.mapNotNull { voce ->
@@ -373,6 +374,189 @@ class Controllore(
         }
     }
 
+    // ------------------------------------------------------------------ libreria col controller
+    /** Sposta la riga scelta della libreria del deck (la apre se è chiusa). */
+    fun libreriaSposta(d: Int, passi: Int) {
+        val deck = stato.deck[d]
+        if (!deck.libreriaAperta) apriLibreria(d)
+        val n = braniVisibili(stato, deck).size
+        if (n > 0) deck.libSelezione = (deck.libSelezione + passi).coerceIn(0, n - 1)
+    }
+
+    fun libreriaCarica(d: Int) {
+        val deck = stato.deck[d]
+        if (!deck.libreriaAperta) return apriLibreria(d)
+        braniVisibili(stato, deck).getOrNull(deck.libSelezione)?.let { caricaBrano(d, it) }
+    }
+
+    // ------------------------------------------------------------------ MIDI
+    private val ultimoValore = HashMap<SorgenteMidi, Int>()
+    private val assegnatiProcedura = HashSet<SorgenteMidi>()
+
+    fun midiCollegato(nome: String?) {
+        if (nome != null && nome != stato.midi.dispositivo) mostra("Controller MIDI collegato: $nome")
+        stato.midi.dispositivo = nome
+    }
+
+    /** Un messaggio dal controller (sul thread dell'interfaccia). */
+    fun midi(m: MessaggioMidi) {
+        val s = m.sorgente
+        val prima = ultimoValore[s]
+        ultimoValore[s] = m.valore
+        val midi = stato.midi
+        midi.ultimo = "${s.testo} = ${m.valore}"
+        val bersaglio = midi.bersaglio
+        if (bersaglio != null) {
+            // LEARN: il primo controllo mosso (tasto premuto o manopola girata) va al comando scelto;
+            // nella procedura guidata i controlli appena assegnati non contano (la manopola sta ancora girando)
+            val giaUsato = midi.procedura != null && s in assegnatiProcedura
+            if (!giaUsato && !(s.nota && m.valore == 0)) {
+                assegna(s, bersaglio.first, bersaglio.second)
+                return
+            }
+        }
+        for (a in midi.assegnazioni.toList()) if (a.sorgente == s) esegui(a, m.valore, prima)
+    }
+
+    private fun esegui(a: Assegnazione, valore: Int, prima: Int?) {
+        val d = a.deck
+        val v = valore / 127f
+        fun giu(x: Int) = if (a.sorgente.nota) x > 0 else x >= 64
+        val premuto = giu(valore)
+        val eraPremuto = prima != null && giu(prima)
+        // pressione: da su a giù (o un tasto che manda solo "premuto" ogni volta)
+        val pressione = premuto && (!eraPremuto || (!a.sorgente.nota && prima == valore))
+        // manopole con lo zero al centro (filtro, pitch): 63-64 = centro
+        val centro = if (valore in 63..64) 0f else ((valore - 63.5f) / 63.5f).coerceIn(-1f, 1f)
+        when (a.azione) {
+            AzioneMidi.CROSSFADER -> crossfader(v)
+            AzioneMidi.MASTER -> master(v)
+            AzioneMidi.VOLUME -> mixer(ParMixer.VOLUME, d, v)
+            AzioneMidi.GAIN -> mixer(ParMixer.GAIN, d, v)
+            AzioneMidi.ALTI -> mixer(ParMixer.ALTI, d, v)
+            AzioneMidi.MEDI -> mixer(ParMixer.MEDI, d, v)
+            AzioneMidi.BASSI -> mixer(ParMixer.BASSI, d, v)
+            AzioneMidi.FILTRO -> mixer(ParMixer.FILTRO, d, centro)
+            AzioneMidi.PITCH -> impostaPitch(d, centro * stato.opzioni.escursione / 100f)
+            AzioneMidi.FX_DRY_WET -> fxManopola(d, 0, v)
+            AzioneMidi.FX_PARAM1 -> fxManopola(d, 1, v)
+            AzioneMidi.FX_PARAM2 -> fxManopola(d, 2, v)
+            AzioneMidi.LIB_SCORRI -> if (prima != null && valore != prima) libreriaSposta(d, if (valore > prima) 1 else -1)
+            AzioneMidi.CUE -> if (pressione) cueGiu(d) else if (!premuto && eraPremuto) cueSu(d)
+            else -> if (pressione) when (a.azione) {
+                AzioneMidi.CURVA -> curvaSuccessiva()
+                AzioneMidi.PLAY -> playPausa(d)
+                AzioneMidi.SYNC -> sync(d)
+                AzioneMidi.KEY -> keylock(d)
+                AzioneMidi.DVS -> dvs(d)
+                AzioneMidi.HOT_CUE_1 -> hotCue(d, 0)
+                AzioneMidi.HOT_CUE_2 -> hotCue(d, 1)
+                AzioneMidi.HOT_CUE_3 -> hotCue(d, 2)
+                AzioneMidi.HOT_CUE_4 -> hotCue(d, 3)
+                AzioneMidi.LOOP -> loopTocco(d)
+                AzioneMidi.LOOP_MEZZO -> loopLunghezza(d, -1)
+                AzioneMidi.LOOP_DOPPIO -> loopLunghezza(d, +1)
+                AzioneMidi.FX_ON -> fxOnOff(d)
+                AzioneMidi.FX_SUCCESSIVO -> fxTipo(d, (stato.deck[d].fx.tipo + 1) % EFFETTI.size)
+                AzioneMidi.FX_ECHO -> fxPadTocco(d, 0)
+                AzioneMidi.FX_DUB -> fxPadTocco(d, 1)
+                AzioneMidi.FX_REVERB -> fxPadTocco(d, 2)
+                AzioneMidi.FX_STRETCH -> fxPadTocco(d, 3)
+                AzioneMidi.LIB_APRI -> apriLibreria(d)
+                AzioneMidi.LIB_SU -> libreriaSposta(d, -1)
+                AzioneMidi.LIB_GIU -> libreriaSposta(d, +1)
+                AzioneMidi.LIB_CARICA -> libreriaCarica(d)
+                else -> Unit
+            }
+        }
+    }
+
+    private fun assegna(s: SorgenteMidi, azione: AzioneMidi, deck: Int) {
+        val lista = stato.midi.assegnazioni
+        // un controllo fa una cosa sola, e ogni comando ha un controllo solo
+        lista.removeAll { it.sorgente == s || (it.azione == azione && it.deck == deck) }
+        lista += Assegnazione(s, azione, deck)
+        salvaMidi()
+        mostra("${nomeComando(azione, deck)} ← ${s.testo}")
+        if (stato.midi.procedura != null) {
+            assegnatiProcedura += s
+            proceduraSalta()
+        } else {
+            stato.midi.bersaglio = null
+        }
+    }
+
+    /** LEARN sulla schermata principale: si toccano i comandi e si muovono i controlli. */
+    fun learnAttiva(acceso: Boolean) {
+        stato.midi.learn = acceso
+        stato.midi.bersaglio = null
+        stato.midi.procedura = null
+        if (acceso) {
+            stato.opzioniAperte = false
+            if (stato.midi.dispositivo == null) mostra("Nessun controller MIDI collegato: collegalo via USB")
+        }
+    }
+
+    /** Sceglie il comando che aspetta un controllo (di nuovo lo stesso = annulla). */
+    fun learnScegli(azione: AzioneMidi, deck: Int) {
+        val nuovo = azione to (if (azione.perDeck) deck else 0)
+        stato.midi.bersaglio = if (stato.midi.bersaglio == nuovo) null else nuovo
+    }
+
+    fun midiRimuovi(a: Assegnazione) {
+        stato.midi.assegnazioni.remove(a)
+        salvaMidi()
+    }
+
+    fun midiAzzera() {
+        stato.midi.assegnazioni.clear()
+        salvaMidi()
+    }
+
+    /** Configurazione guidata dell'X-Session Pro: un controllo alla volta. */
+    fun proceduraInizia() {
+        stato.opzioniAperte = false
+        stato.midi.learn = false
+        assegnatiProcedura.clear()
+        stato.midi.procedura = PROCEDURA_XSESSION
+        stato.midi.passo = 0
+        stato.midi.bersaglio = PROCEDURA_XSESSION[0]
+    }
+
+    fun proceduraSalta() {
+        val procedura = stato.midi.procedura ?: return
+        stato.midi.passo++
+        if (stato.midi.passo >= procedura.size) {
+            proceduraFine()
+            mostra("Configurazione finita: ${stato.midi.assegnazioni.size} comandi assegnati")
+        } else {
+            stato.midi.bersaglio = procedura[stato.midi.passo]
+        }
+    }
+
+    fun proceduraFine() {
+        stato.midi.procedura = null
+        stato.midi.bersaglio = null
+    }
+
+    private fun salvaMidi() {
+        piattaforma.salvaPreferenza(
+            "midi",
+            stato.midi.assegnazioni.joinToString(";") { "${it.sorgente.codice()}=${it.azione.name},${it.deck}" },
+        )
+    }
+
+    private fun caricaMidi() {
+        val testo = piattaforma.leggiPreferenza("midi") ?: return
+        for (voce in testo.split(';')) {
+            val (codice, resto) = voce.split('=').takeIf { it.size == 2 } ?: continue
+            val (nome, deck) = resto.split(',').takeIf { it.size == 2 } ?: continue
+            val sorgente = SorgenteMidi.daCodice(codice) ?: continue
+            val azione = AzioneMidi.entries.firstOrNull { it.name == nome } ?: continue
+            stato.midi.assegnazioni += Assegnazione(sorgente, azione, deck.toIntOrNull()?.coerceIn(0, 1) ?: 0)
+        }
+    }
+
     // ------------------------------------------------------------------ opzioni
     fun apriOpzioni() {
         stato.opzioniAperte = true
@@ -380,6 +564,7 @@ class Controllore(
 
     fun chiudiOpzioni() {
         stato.opzioniAperte = false
+        if (!stato.midi.learn && stato.midi.procedura == null) stato.midi.bersaglio = null
         salvaOpzioni()
     }
 

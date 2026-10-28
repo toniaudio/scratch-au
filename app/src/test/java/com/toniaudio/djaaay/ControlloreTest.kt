@@ -173,4 +173,95 @@ class ControlloreTest {
         assertEquals("fisso", testoFx(3, 2, 0.5f))
         assertEquals("+12 st", testoFx(3, 2, 1f))
     }
+
+    private fun cc(canale: Int, numero: Int, valore: Int) = c.midi(MessaggioMidi(SorgenteMidi(false, canale, numero), valore))
+    private fun nota(numero: Int, velocity: Int) = c.midi(MessaggioMidi(SorgenteMidi(true, 0, numero), velocity))
+
+    @Test
+    fun lettoreMidiCapisceRunningStatusEIgnoraIlResto() {
+        val letti = mutableListOf<MessaggioMidi>()
+        val l = LettoreMidi()
+        // CC 7 = 100 sul canale 2, poi (running status) CC 8 = 5, clock in mezzo, sysex, note on/off
+        val byte = byteArrayOf(0xB1.toByte(), 7, 100, 8, 0xF8.toByte(), 5, 0xF0.toByte(), 1, 2, 3, 0xF7.toByte(),
+            0x90.toByte(), 60, 127, 0x80.toByte(), 60, 64, 0x90.toByte(), 61, 0)
+        l.leggi(byte, 0, 6) { letti += it }  // arriva a pezzi
+        l.leggi(byte, 6, byte.size - 6) { letti += it }
+        assertEquals(
+            listOf(
+                MessaggioMidi(SorgenteMidi(false, 1, 7), 100),
+                MessaggioMidi(SorgenteMidi(false, 1, 8), 5),
+                MessaggioMidi(SorgenteMidi(true, 0, 60), 127),
+                MessaggioMidi(SorgenteMidi(true, 0, 60), 0),
+                MessaggioMidi(SorgenteMidi(true, 0, 61), 0),
+            ),
+            letti,
+        )
+    }
+
+    @Test
+    fun learnAssegnaEPoiIlControllerComanda() {
+        c.learnAttiva(true)
+        c.learnScegli(AzioneMidi.CROSSFADER, 0)
+        cc(0, 8, 64)  // assegnato
+        assertNull(stato.midi.bersaglio)
+        cc(0, 8, 127)
+        assertEquals(1f, stato.mixer.crossfader)
+        assertEquals(1f, ponte.mixer[ParMixer.CROSSFADER to 0])
+        // Play A su una nota: si assegna alla pressione, il rilascio non fa niente
+        c.learnScegli(AzioneMidi.PLAY, 0)
+        nota(46, 127)
+        nota(46, 0)
+        carica(0, 120.0, 0.0)
+        nota(46, 100)
+        assertEquals(Cmd.PLAY_PAUSA, ponte.comandi.last().tipo)
+        // CUE B: premuto e rilasciato
+        c.learnScegli(AzioneMidi.CUE, 1)
+        cc(0, 20, 127)
+        cc(0, 20, 0)
+        cc(0, 20, 127)
+        assertEquals(Cmd.CUE_GIU, ponte.comandi.last().tipo)
+        cc(0, 20, 0)
+        assertEquals(Cmd.CUE_SU, ponte.comandi.last().tipo)
+        // filtro: 64 = centro (spento)
+        c.learnScegli(AzioneMidi.FILTRO, 1)
+        cc(0, 14, 10)
+        cc(0, 14, 64)
+        assertEquals(0f, stato.mixer.canale[1].filtro)
+        // lo stesso controllo riassegnato toglie il vecchio comando
+        c.learnScegli(AzioneMidi.VOLUME, 0)
+        cc(0, 8, 30)
+        assertEquals(listOf(AzioneMidi.VOLUME), stato.midi.assegnazioni.filter { it.sorgente == SorgenteMidi(false, 0, 8) }.map { it.azione })
+        // salvate e ricaricate
+        val altro = Controllore(StatoApp(), PonteFinto(), piattaforma, CoroutineScope(Dispatchers.Unconfined))
+        assertEquals(stato.midi.assegnazioni.toSet(), altro.stato.midi.assegnazioni.toSet())
+    }
+
+    @Test
+    fun proceduraGuidataUnControlloAllaVolta() {
+        c.proceduraInizia()
+        assertEquals(AzioneMidi.CROSSFADER to 0, stato.midi.bersaglio)
+        cc(0, 8, 60)
+        cc(0, 8, 61)  // il crossfader si sta ancora muovendo: non va al passo dopo
+        cc(0, 8, 62)
+        assertEquals(AzioneMidi.VOLUME to 0, stato.midi.bersaglio)
+        cc(0, 1, 100)
+        c.proceduraSalta()  // GAIN A saltato
+        assertEquals(AzioneMidi.ALTI to 0, stato.midi.bersaglio)
+        c.proceduraFine()
+        assertNull(stato.midi.bersaglio)
+        assertEquals(2, stato.midi.assegnazioni.size)
+        assertEquals(62f / 127f, stato.mixer.crossfader, 1e-6f)
+    }
+
+    @Test
+    fun libreriaColController() {
+        piattaforma.brani = (1..5).map { branoFinto(it.toLong(), "Brano $it", "", 200) }  // letti all'apertura
+        c.libreriaSposta(1, 2)
+        assertTrue(stato.deck[1].libreriaAperta)
+        assertEquals(2, stato.deck[1].libSelezione)
+        c.libreriaSposta(1, 10)
+        assertEquals(4, stato.deck[1].libSelezione)
+        c.libreriaCarica(1)
+        assertEquals("Brano 5", stato.deck[1].brano?.titolo)
+    }
 }

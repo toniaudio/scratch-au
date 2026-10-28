@@ -113,6 +113,10 @@ class StatoDeck(val indice: Int) {
     var loopIndice by mutableIntStateOf(5)  // 4 battute
     var tabPad by mutableIntStateOf(0)  // 0 hot cue, 1 loop, 2 fx
     var libreriaAperta by mutableStateOf(false)
+    var libCerca by mutableStateOf("")
+    var libScheda by mutableIntStateOf(0)  // 0 tutti, 1 cartelle, 2 playlist, 3 recenti
+    var libCartella by mutableStateOf<String?>(null)
+    var libSelezione by mutableIntStateOf(0)  // riga scelta col controller MIDI
     val fx = StatoFx()
 
     /** Durata di una battuta in secondi del brano (120 BPM se il tempo non è noto). */
@@ -120,6 +124,19 @@ class StatoDeck(val indice: Int) {
 
     /** BPM che si sentono davvero (con il pitch). */
     val bpmEffettivi: Double get() = bpm * (1.0 + pitch)
+}
+
+/** I brani che la libreria del deck mostra adesso (scheda, cartella e ricerca); vuota per l'elenco delle cartelle. */
+fun braniVisibili(app: StatoApp, deck: StatoDeck): List<Brano> {
+    val filtro = deck.libCerca.trim()
+    fun corrisponde(b: Brano) = filtro.isEmpty() || b.titolo.contains(filtro, true) || b.artista.contains(filtro, true) ||
+        (app.bpmNoti[b.chiave]?.let { "%.0f".format(it).startsWith(filtro) } ?: false)
+    return when (deck.libScheda) {
+        0 -> app.libreria
+        1 -> deck.libCartella?.let { c -> app.libreria.filter { it.cartella == c } } ?: emptyList()
+        3 -> app.recenti.mapNotNull { id -> app.libreria.firstOrNull { it.id == id } }
+        else -> emptyList()
+    }.filter(::corrisponde)
 }
 
 class StatoCanale {
@@ -155,6 +172,7 @@ class Opzioni {
 }
 
 class StatoApp {
+    val midi = StatoMidi()
     val deck = listOf(StatoDeck(0), StatoDeck(1))
     val mixer = StatoMixer()
     val opzioni = Opzioni()

@@ -25,6 +25,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.Text
+import com.toniaudio.djaaay.AZIONI_HOT_CUE
+import com.toniaudio.djaaay.AZIONI_PAD_FX
+import com.toniaudio.djaaay.AzioneMidi
 import com.toniaudio.djaaay.Controllore
 import com.toniaudio.djaaay.EFFETTI
 import com.toniaudio.djaaay.LUNGHEZZE_LOOP
@@ -51,21 +54,25 @@ fun PannelloDeck(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = Mod
                         onToccoFine = { c.toccoFine(d) },
                         modifier = Modifier.fillMaxHeight(),
                     )
-                    TastoKey(
-                        acceso = deck.keylock,
-                        onTocco = { c.keylock(d) },
-                        modifier = Modifier.align(if (d == 0) Alignment.TopStart else Alignment.TopEnd),
-                    )
+                    Assegnabile(app, c, AzioneMidi.KEY, d, Modifier.align(if (d == 0) Alignment.TopStart else Alignment.TopEnd)) {
+                        TastoKey(acceso = deck.keylock, onTocco = { c.keylock(d) })
+                    }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Tasto(Modifier.weight(1f).height(26.dp), onPremi = { c.cueGiu(d) }, onRilascia = { c.cueSu(d) }) {
-                        Etichetta("CUE", Colori.Testo, 10.5.sp)
+                    Assegnabile(app, c, AzioneMidi.CUE, d, Modifier.weight(1f).height(26.dp)) {
+                        Tasto(Modifier.fillMaxSize(), onPremi = { c.cueGiu(d) }, onRilascia = { c.cueSu(d) }) {
+                            Etichetta("CUE", Colori.Testo, 10.5.sp)
+                        }
                     }
-                    Tasto(Modifier.weight(1f).height(26.dp), acceso = deck.inPlay, onTocco = { c.playPausa(d) }) {
-                        SimboloPlay(deck.inPlay)
+                    Assegnabile(app, c, AzioneMidi.PLAY, d, Modifier.weight(1f).height(26.dp)) {
+                        Tasto(Modifier.fillMaxSize(), acceso = deck.inPlay, onTocco = { c.playPausa(d) }) {
+                            SimboloPlay(deck.inPlay)
+                        }
                     }
-                    Tasto(Modifier.weight(1f).height(26.dp), onTocco = { c.sync(d) }) {
-                        Etichetta("SYNC", Colori.Testo, 10.5.sp)
+                    Assegnabile(app, c, AzioneMidi.SYNC, d, Modifier.weight(1f).height(26.dp)) {
+                        Tasto(Modifier.fillMaxSize(), onTocco = { c.sync(d) }) {
+                            Etichetta("SYNC", Colori.Testo, 10.5.sp)
+                        }
                     }
                 }
                 Schede(listOf("HOT CUE", "LOOP", "FX"), deck.tabPad, { deck.tabPad = it }, Modifier.fillMaxWidth())
@@ -118,41 +125,51 @@ private fun Pad(app: StatoApp, d: Int, c: Controllore) {
         when (deck.tabPad) {
             0 -> for (i in 0 until 4) {
                 val punto = deck.hotCue[i]
-                Tasto(altezza.weight(1f), onTocco = { c.hotCue(d, i) }, onTieni = { c.cancellaHotCue(d, i) }) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (punto != null) {
-                            Canvas(Modifier.size(5.dp)) { drawCircle(Colori.HotCue[i]) }
-                            Spacer(Modifier.width(4.dp))
+                Assegnabile(app, c, AZIONI_HOT_CUE[i], d, altezza.weight(1f)) {
+                    Tasto(Modifier.fillMaxSize(), onTocco = { c.hotCue(d, i) }, onTieni = { c.cancellaHotCue(d, i) }) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (punto != null) {
+                                Canvas(Modifier.size(5.dp)) { drawCircle(Colori.HotCue[i]) }
+                                Spacer(Modifier.width(4.dp))
+                            }
+                            Etichetta("${i + 1}", if (punto != null) Colori.Testo else Colori.Spento, 9.5.sp)
                         }
-                        Etichetta("${i + 1}", if (punto != null) Colori.Testo else Colori.Spento, 9.5.sp)
                     }
                 }
             }
             1 -> {
-                Tasto(altezza.weight(1f), onTocco = { c.loopLunghezza(d, -1) }) { Freccia(sinistra = true) }
-                Tasto(
-                    altezza.weight(2f),
-                    bordo = if (deck.loopAttivo) Colori.Verde else null,
-                    onTocco = { c.loopTocco(d) },
-                ) {
-                    Text(
-                        etichettaLoop(LUNGHEZZE_LOOP[deck.loopIndice]),
-                        color = if (deck.loopAttivo) Colori.Verde else Colori.Testo,
-                        fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.ExtraBold,
-                    )
+                Assegnabile(app, c, AzioneMidi.LOOP_MEZZO, d, altezza.weight(1f)) {
+                    Tasto(Modifier.fillMaxSize(), onTocco = { c.loopLunghezza(d, -1) }) { Freccia(sinistra = true) }
                 }
-                Tasto(altezza.weight(1f), onTocco = { c.loopLunghezza(d, +1) }) { Freccia(sinistra = false) }
+                Assegnabile(app, c, AzioneMidi.LOOP, d, altezza.weight(2f)) {
+                    Tasto(
+                        Modifier.fillMaxSize(),
+                        bordo = if (deck.loopAttivo) Colori.Verde else null,
+                        onTocco = { c.loopTocco(d) },
+                    ) {
+                        Text(
+                            etichettaLoop(LUNGHEZZE_LOOP[deck.loopIndice]),
+                            color = if (deck.loopAttivo) Colori.Verde else Colori.Testo,
+                            fontSize = 14.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.ExtraBold,
+                        )
+                    }
+                }
+                Assegnabile(app, c, AzioneMidi.LOOP_DOPPIO, d, altezza.weight(1f)) {
+                    Tasto(Modifier.fillMaxSize(), onTocco = { c.loopLunghezza(d, +1) }) { Freccia(sinistra = false) }
+                }
             }
             // tocco = accende/spegne quell'effetto; tenuto premuto = acceso finché non si lascia
             else -> EFFETTI.forEachIndexed { t, e ->
                 val acceso = deck.fx.acceso && deck.fx.tipo == t
-                Tasto(
-                    altezza.weight(1f),
-                    bordo = if (acceso) Colori.Neutro else null,
-                    onTocco = { c.fxPadTocco(d, t) },
-                    onTieni = { c.fxPadTieni(d, t) },
-                    onRilascia = { c.fxPadRilascia(d) },
-                ) { Etichetta(e.corto, if (acceso) Colori.Testo else Colori.Scuro, 8.sp) }
+                Assegnabile(app, c, AZIONI_PAD_FX[t], d, altezza.weight(1f)) {
+                    Tasto(
+                        Modifier.fillMaxSize(),
+                        bordo = if (acceso) Colori.Neutro else null,
+                        onTocco = { c.fxPadTocco(d, t) },
+                        onTieni = { c.fxPadTieni(d, t) },
+                        onRilascia = { c.fxPadRilascia(d) },
+                    ) { Etichetta(e.corto, if (acceso) Colori.Testo else Colori.Scuro, 8.sp) }
+                }
             }
         }
     }
@@ -181,16 +198,18 @@ private fun ColonnaPitch(app: StatoApp, d: Int, c: Controllore) {
     ) {
         Etichetta("PITCH", Colori.Spento, 8.5.sp)
         // in alto = più veloce
-        FaderVerticale(
-            valore = 0.5f + deck.pitch / (2 * escursione),
-            onCambia = { c.impostaPitch(d, (it - 0.5f) * 2 * escursione) },
-            centrale = true,
-            larghezza = 30.dp,
-            cappuccio = 22.dp,
-            modifier = Modifier.weight(1f),
-        )
+        Assegnabile(app, c, AzioneMidi.PITCH, d, Modifier.weight(1f)) {
+            FaderVerticale(
+                valore = 0.5f + deck.pitch / (2 * escursione),
+                onCambia = { c.impostaPitch(d, (it - 0.5f) * 2 * escursione) },
+                centrale = true,
+                larghezza = 30.dp,
+                cappuccio = 22.dp,
+                modifier = Modifier.fillMaxHeight(),
+            )
+        }
         Numero("%+.1f%%".format(deck.pitch * 100), dimensione = 10.sp)
-        Tasto(Modifier.width(44.dp).height(22.dp), onTocco = { c.dvs(d) }) {
+        Assegnabile(app, c, AzioneMidi.DVS, d) { Tasto(Modifier.width(44.dp).height(22.dp), onTocco = { c.dvs(d) }) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Canvas(Modifier.size(9.dp)) {
                     drawCircle(Colori.Spento, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
@@ -199,6 +218,6 @@ private fun ColonnaPitch(app: StatoApp, d: Int, c: Controllore) {
                 Spacer(Modifier.width(3.dp))
                 Etichetta("DVS", Colori.Spento, 8.sp)
             }
-        }
+        } }
     }
 }

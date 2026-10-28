@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -30,7 +32,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.toniaudio.djaaay.AzioneMidi
 import com.toniaudio.djaaay.Controllore
+import com.toniaudio.djaaay.nomeComando
 import com.toniaudio.djaaay.StatoApp
 import kotlinx.coroutines.delay
 
@@ -69,11 +73,7 @@ fun FinestraOpzioni(app: StatoApp, c: Controllore) {
                 when (app.schedaOpzioni) {
                     0 -> SchedaGenerale(app, c)
                     1 -> SchedaAudio(app, c)
-                    2 -> InArrivo(
-                        "Controller MIDI",
-                        "Qui si collegherà l'M-Audio X-Session Pro via USB: preset già pronto e tasto LEARN per assegnare " +
-                            "ogni comando (crossfader, volumi, EQ, filtri, Play, Cue, Sync, hot cue, loop, effetti…). In arrivo.",
-                    )
+                    2 -> SchedaMidi(app, c)
                     else -> InArrivo(
                         "DVS con vinile timecode",
                         "Con una scheda audio USB e un vinile timecode Serato, il tasto DVS di ogni deck lo farà seguire il " +
@@ -193,5 +193,90 @@ private fun RigaInterruttore(nome: String, acceso: Boolean, onCambia: (Boolean) 
 private fun RigaScelta(nome: String, voci: List<String>, scelta: Int, onScegli: (Int) -> Unit) {
     Riga(nome, null) {
         Schede(voci, scelta, onScegli, Modifier.width(60.dp * voci.size), 10.sp)
+    }
+}
+
+@Composable
+private fun SchedaMidi(app: StatoApp, c: Controllore) {
+    val midi = app.midi
+    Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(26.dp)) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            Titolo("CONTROLLER")
+            Riga(midi.dispositivo ?: "Nessun controller", if (midi.dispositivo != null) "collegato via USB" else "collega l'X-Session Pro con il cavo USB (adattatore USB-C)") {
+                if (midi.dispositivo != null) {
+                    Row(
+                        Modifier.background(Colori.Verde.copy(alpha = 0.15f), RoundedCornerShape(12.dp)).padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.size(6.dp).background(Colori.Verde, RoundedCornerShape(3.dp)))
+                        Spacer(Modifier.width(5.dp))
+                        Text("collegato", color = Colori.Verde, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+            if (midi.ultimo.isNotEmpty()) Text("ultimo messaggio: ${midi.ultimo}", color = Colori.Spento, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+            Riga("Configurazione guidata", "X-Session Pro: muovi un controllo alla volta (2 minuti)") {
+                PulsanteOpzioni("INIZIA", acceso = false) { c.proceduraInizia() }
+            }
+            Riga("Assegna comandi", "LEARN: tocchi un comando dell'app e muovi quello del controller") {
+                PulsanteOpzioni("LEARN", acceso = true) { c.learnAttiva(true) }
+            }
+            Riga("Togli tutte le assegnazioni", null) {
+                PulsanteOpzioni("Azzera", acceso = false) { c.midiAzzera() }
+            }
+            Titolo("COMANDI ASSEGNABILI")
+            Text(
+                "Tutti quelli nell'elenco a destra: toccane uno e muovi il controllo. Ci sono anche quelli senza tasto " +
+                    "sullo schermo (libreria su/giù/scorri/carica, effetto successivo).",
+                color = Colori.Spento, fontSize = 10.sp,
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            Titolo("ASSEGNAZIONI")
+            Column(Modifier.fillMaxSize().border(1.dp, Colori.Linea, RoundedCornerShape(8.dp))) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)) {
+                    Etichetta("FUNZIONE", Colori.Spento, 8.sp, Modifier.weight(1f))
+                    Etichetta("CONTROLLER", Colori.Spento, 8.sp, Modifier.weight(1f))
+                }
+                val righe = AzioneMidi.entries.flatMap { a -> if (a.perDeck) listOf(a to 0, a to 1) else listOf(a to 0) }
+                LazyColumn(Modifier.fillMaxSize()) {
+                    items(righe) { (azione, deck) ->
+                        val assegnata = midi.assegnazioni.firstOrNull { it.azione == azione && it.deck == deck }
+                        val inAttesa = midi.bersaglio == (azione to deck)
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .height(26.dp)
+                                .background(if (inAttesa) Colori.Verde.copy(alpha = 0.15f) else Color.Transparent)
+                                .pointerInput(azione, deck) { detectTapGestures { c.learnScegli(azione, deck) } }
+                                .padding(horizontal = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(nomeComando(azione, deck), color = Colori.Testo, fontSize = 10.sp, modifier = Modifier.weight(1f), maxLines = 1)
+                            Text(
+                                when {
+                                    inAttesa -> "muovi il controllo…"
+                                    assegnata != null -> assegnata.sorgente.testo
+                                    else -> "—"
+                                },
+                                color = if (inAttesa) Colori.Verde else if (assegnata != null) Colori.Neutro else Colori.Scuro,
+                                fontSize = 9.5.sp, fontFamily = FontFamily.Monospace, modifier = Modifier.weight(1f), maxLines = 1,
+                            )
+                            Box(
+                                Modifier.size(22.dp).pointerInput(assegnata) { detectTapGestures { assegnata?.let { c.midiRimuovi(it) } } },
+                                contentAlignment = Alignment.Center,
+                            ) { if (assegnata != null) Text("✕", color = Colori.Spento, fontSize = 10.sp) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PulsanteOpzioni(testo: String, acceso: Boolean, onTocco: () -> Unit) {
+    Tasto(Modifier.height(26.dp).width(78.dp), acceso = acceso, onTocco = onTocco) {
+        Text(testo, color = if (acceso) Colori.Sfondo else Colori.Testo, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
     }
 }

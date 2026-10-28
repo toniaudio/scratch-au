@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.toniaudio.djaaay.AzioneMidi
 import com.toniaudio.djaaay.Controllore
 import com.toniaudio.djaaay.StatoApp
 import com.toniaudio.djaaay.StatoDeck
@@ -39,7 +40,7 @@ fun BarraAlta(app: StatoApp, c: Controllore, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        InfoDeck(app.deck[0], c, Modifier.weight(1f))
+        InfoDeck(app, app.deck[0], c, Modifier.weight(1f))
         Box(
             Modifier
                 .background(Colori.Pannello2, RoundedCornerShape(7.dp))
@@ -49,22 +50,24 @@ fun BarraAlta(app: StatoApp, c: Controllore, modifier: Modifier = Modifier) {
         ) {
             Text("DVS", color = Colori.Testo, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 2.sp)
         }
-        InfoDeck(app.deck[1], c, Modifier.weight(1f))
+        InfoDeck(app, app.deck[1], c, Modifier.weight(1f))
     }
 }
 
 @Composable
-private fun InfoDeck(deck: StatoDeck, c: Controllore, modifier: Modifier) {
+private fun InfoDeck(app: StatoApp, deck: StatoDeck, c: Controllore, modifier: Modifier) {
     val b = deck.indice == 1
     Row(modifier.fillMaxHeight(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         val libreria = @Composable {
-            Box(
-                Modifier
-                    .size(width = 30.dp, height = 26.dp)
-                    .background(if (deck.libreriaAperta) Colori.Neutro else Colori.Pannello2, RoundedCornerShape(7.dp))
-                    .pointerInput(Unit) { detectTapGestures { c.apriLibreria(deck.indice) } },
-                contentAlignment = Alignment.Center,
-            ) { IconaLibreria(if (deck.libreriaAperta) Colori.Sfondo else Colori.Testo) }
+            Assegnabile(app, c, AzioneMidi.LIB_APRI, deck.indice) {
+                Box(
+                    Modifier
+                        .size(width = 30.dp, height = 26.dp)
+                        .background(if (deck.libreriaAperta) Colori.Neutro else Colori.Pannello2, RoundedCornerShape(7.dp))
+                        .pointerInput(Unit) { detectTapGestures { c.apriLibreria(deck.indice) } },
+                    contentAlignment = Alignment.Center,
+                ) { IconaLibreria(if (deck.libreriaAperta) Colori.Sfondo else Colori.Testo) }
+            }
         }
         val lettera = @Composable {
             Box(Modifier.size(22.dp).background(Colori.Pannello2, RoundedCornerShape(6.dp)), contentAlignment = Alignment.Center) {

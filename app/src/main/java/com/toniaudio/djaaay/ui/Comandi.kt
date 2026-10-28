@@ -19,11 +19,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -35,6 +37,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.toniaudio.djaaay.AzioneMidi
+import com.toniaudio.djaaay.Controllore
+import com.toniaudio.djaaay.StatoApp
 
 /** Scritta piccola in maiuscolo come quelle degli EQ nelle bozze. */
 @Composable
@@ -413,6 +418,44 @@ fun Schede(voci: List<String>, scelta: Int, onScegli: (Int) -> Unit, modifier: M
                     .padding(vertical = 3.dp),
                 contentAlignment = Alignment.Center,
             ) { Etichetta(v, if (i == scelta) Colori.Testo else Colori.Spento, dimensione) }
+        }
+    }
+}
+
+/**
+ * Comando assegnabile al controller MIDI. In modalità LEARN è bordato di verde tratteggiato (pieno se è quello
+ * scelto) e un tocco lo sceglie invece di azionarlo; fuori dal LEARN non cambia niente.
+ */
+@Composable
+fun Assegnabile(
+    app: StatoApp,
+    c: Controllore,
+    azione: AzioneMidi,
+    deck: Int,
+    modifier: Modifier = Modifier,
+    contenuto: @Composable () -> Unit,
+) {
+    Box(modifier, contentAlignment = Alignment.Center) {
+        contenuto()
+        if (app.midi.learn) {
+            val scelto = app.midi.bersaglio == (azione to if (azione.perDeck) deck else 0)
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .pointerInput(azione, deck) { detectTapGestures { c.learnScegli(azione, deck) } }
+                    .drawBehind {
+                        val r = CornerRadius(6.dp.toPx())
+                        if (scelto) {
+                            drawRoundRect(Colori.Verde.copy(alpha = 0.14f), cornerRadius = r)
+                            drawRoundRect(Colori.Verde, cornerRadius = r, style = Stroke(2.dp.toPx()))
+                        } else {
+                            drawRoundRect(
+                                Colori.Verde.copy(alpha = 0.7f), cornerRadius = r,
+                                style = Stroke(1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))),
+                            )
+                        }
+                    },
+            )
         }
     }
 }

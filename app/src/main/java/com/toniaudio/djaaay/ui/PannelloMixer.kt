@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.toniaudio.djaaay.AzioneMidi
 import com.toniaudio.djaaay.Controllore
 import com.toniaudio.djaaay.ParMixer
 import com.toniaudio.djaaay.StatoApp
@@ -56,12 +57,16 @@ fun PannelloMixer(app: StatoApp, c: Controllore, modifier: Modifier = Modifier) 
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
             Etichetta("A", Colori.Spento, 9.sp)
             Spacer(Modifier.width(7.dp))
-            Crossfader(m.crossfader, { c.crossfader(it) }, Modifier.width(150.dp).height(26.dp))
+            Assegnabile(app, c, AzioneMidi.CROSSFADER, 0) {
+                Crossfader(m.crossfader, { c.crossfader(it) }, Modifier.width(150.dp).height(26.dp))
+            }
             Spacer(Modifier.width(7.dp))
             Etichetta("B", Colori.Spento, 9.sp)
         }
-        Box(Modifier.padding(top = 3.dp).pointerInput(Unit) { detectTapGestures { c.curvaSuccessiva() } }.padding(2.dp)) {
-            SimboloCurva(m.curva)
+        Assegnabile(app, c, AzioneMidi.CURVA, 0, Modifier.padding(top = 3.dp)) {
+            Box(Modifier.pointerInput(Unit) { detectTapGestures { c.curvaSuccessiva() } }.padding(2.dp)) {
+                SimboloCurva(m.curva)
+            }
         }
     }
 }
@@ -73,13 +78,17 @@ private fun ColonnaManopole(app: StatoApp, canale: Int, c: Controllore) {
     val allineamento = if (canale == 0) Alignment.End else Alignment.Start
     Column(Modifier.width(70.dp).fillMaxHeight(), horizontalAlignment = allineamento, verticalArrangement = Arrangement.spacedBy(3.dp)) {
         RigaManopola("GAIN", canale) {
-            Manopola(s.gain, { c.mixer(ParMixer.GAIN, canale, it) }, tipo = TipoManopola.Sottile, diametro = 16.dp, modifier = Modifier.padding(horizontal = 4.dp))
+            Assegnabile(app, c, AzioneMidi.GAIN, canale) {
+                Manopola(s.gain, { c.mixer(ParMixer.GAIN, canale, it) }, tipo = TipoManopola.Sottile, diametro = 16.dp, modifier = Modifier.padding(horizontal = 4.dp))
+            }
         }
-        RigaManopola("HI", canale) { Manopola(s.alti, { c.mixer(ParMixer.ALTI, canale, it) }) }
-        RigaManopola("MID", canale) { Manopola(s.medi, { c.mixer(ParMixer.MEDI, canale, it) }) }
-        RigaManopola("LOW", canale) { Manopola(s.bassi, { c.mixer(ParMixer.BASSI, canale, it) }) }
+        RigaManopola("HI", canale) { Assegnabile(app, c, AzioneMidi.ALTI, canale) { Manopola(s.alti, { c.mixer(ParMixer.ALTI, canale, it) }) } }
+        RigaManopola("MID", canale) { Assegnabile(app, c, AzioneMidi.MEDI, canale) { Manopola(s.medi, { c.mixer(ParMixer.MEDI, canale, it) }) } }
+        RigaManopola("LOW", canale) { Assegnabile(app, c, AzioneMidi.BASSI, canale) { Manopola(s.bassi, { c.mixer(ParMixer.BASSI, canale, it) }) } }
         Column(Modifier.width(56.dp).padding(top = 3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Manopola(s.filtro, { c.mixer(ParMixer.FILTRO, canale, it) }, tipo = TipoManopola.Filtro, diametro = 40.dp)
+            Assegnabile(app, c, AzioneMidi.FILTRO, canale) {
+                Manopola(s.filtro, { c.mixer(ParMixer.FILTRO, canale, it) }, tipo = TipoManopola.Filtro, diametro = 40.dp)
+            }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Etichetta("LP", Colori.Scuro, 7.5.sp)
                 Etichetta("FILTRO", Colori.Spento, 7.5.sp)
@@ -110,7 +119,9 @@ private fun ColonnaFader(app: StatoApp, canale: Int, c: Controllore) {
         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             val meter = @Composable { Meter(app.deck[canale].livello, Modifier.width(5.dp).fillMaxHeight()) }
             if (canale == 1) meter()
-            FaderVerticale(s.volume, { c.mixer(ParMixer.VOLUME, canale, it) }, Modifier.fillMaxHeight())
+            Assegnabile(app, c, AzioneMidi.VOLUME, canale, Modifier.fillMaxHeight()) {
+                FaderVerticale(s.volume, { c.mixer(ParMixer.VOLUME, canale, it) }, Modifier.fillMaxHeight())
+            }
             if (canale == 0) meter()
         }
         Etichetta(if (canale == 0) "A" else "B", Colori.Spento, 9.sp, Modifier.padding(top = 2.dp))
@@ -122,7 +133,9 @@ private fun ColonnaMaster(app: StatoApp, c: Controllore) {
     val m = app.mixer
     Column(Modifier.width(44.dp).fillMaxHeight(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(3.dp)) {
         Etichetta("MASTER")
-        Manopola(m.master, { c.master(it) }, tipo = TipoManopola.Sottile, diametro = 20.dp, predefinito = 0.8f)
+        Assegnabile(app, c, AzioneMidi.MASTER, 0) {
+            Manopola(m.master, { c.master(it) }, tipo = TipoManopola.Sottile, diametro = 20.dp, predefinito = 0.8f)
+        }
         Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
             Meter(m.livelloL, Modifier.width(5.dp).fillMaxHeight())
             Meter(m.livelloR, Modifier.width(5.dp).fillMaxHeight())

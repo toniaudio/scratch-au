@@ -16,10 +16,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -40,14 +43,13 @@ import androidx.compose.ui.unit.sp
 import com.toniaudio.djaaay.Brano
 import com.toniaudio.djaaay.Controllore
 import com.toniaudio.djaaay.StatoApp
+import com.toniaudio.djaaay.braniVisibili
 
 /** Libreria aperta da un deck, dentro lo spazio di quel deck: un tocco su un brano lo carica lì. */
 @Composable
 fun LibreriaDeck(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = Modifier) {
     val deck = app.deck[d]
-    var cerca by remember { mutableStateOf("") }
-    var scheda by remember { mutableIntStateOf(0) }  // 0 tutti, 1 cartelle, 2 playlist, 3 recenti
-    var cartella by remember { mutableStateOf<String?>(null) }
+    val lista = rememberLazyListState()
 
     Column(
         modifier
@@ -65,9 +67,9 @@ fun LibreriaDeck(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = Mod
                     .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                if (cerca.isEmpty()) Text("Cerca nel deck ${deck.lettera}…", color = Colori.Spento, fontSize = 10.sp)
+                if (deck.libCerca.isEmpty()) Text("Cerca nel deck ${deck.lettera}…", color = Colori.Spento, fontSize = 10.sp)
                 BasicTextField(
-                    cerca, { cerca = it },
+                    deck.libCerca, { deck.libCerca = it; deck.libSelezione = 0 },
                     singleLine = true,
                     textStyle = TextStyle(color = Colori.Testo, fontSize = 11.sp),
                     cursorBrush = SolidColor(Colori.Testo),
@@ -82,8 +84,8 @@ fun LibreriaDeck(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = Mod
             ) { Text("✕", color = Colori.Spento, fontSize = 12.sp) }
         }
         Schede(
-            listOf("Tutti", "Cartelle", "Playlist", "Recenti"), scheda,
-            { scheda = it; cartella = null },
+            listOf("Tutti", "Cartelle", "Playlist", "Recenti"), deck.libScheda,
+            { deck.libScheda = it; deck.libCartella = null; deck.libSelezione = 0 },
             Modifier.padding(horizontal = 7.dp).fillMaxWidth(),
         )
         Spacer(Modifier.height(3.dp))
@@ -92,32 +94,38 @@ fun LibreriaDeck(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = Mod
             Avviso("DVS ha bisogno del permesso per leggere la musica del telefono.", "Consenti") { c.chiediPermessoLibreria() }
             return@Column
         }
-        val filtro = cerca.trim()
-        fun corrisponde(b: Brano) = filtro.isEmpty() || b.titolo.contains(filtro, true) || b.artista.contains(filtro, true) ||
-            (app.bpmNoti[b.chiave]?.let { "%.0f".format(it).startsWith(filtro) } ?: false)
-
         Box(Modifier.weight(1f)) {
             when {
                 app.libreria.isEmpty() -> Avviso("Nessun brano trovato sul telefono.\nCopia dei file musicali (mp3, wav, m4a, flac…) nella memoria del telefono.")
-                scheda == 2 -> Avviso("Le playlist arriveranno in un prossimo aggiornamento.")
-                scheda == 1 && cartella == null -> {
+                deck.libScheda == 2 -> Avviso("Le playlist arriveranno in un prossimo aggiornamento.")
+                deck.libScheda == 1 && deck.libCartella == null -> {
                     val cartelle = app.libreria.groupBy { it.cartella }.toSortedMap(String.CASE_INSENSITIVE_ORDER)
                     LazyColumn(Modifier.fillMaxSize()) {
                         items(cartelle.keys.toList()) { nome ->
-                            RigaCartella(nome.ifEmpty { "Memoria del telefono" }, cartelle[nome]?.size ?: 0) { cartella = nome }
+                            RigaCartella(nome.ifEmpty { "Memoria del telefono" }, cartelle[nome]?.size ?: 0) {
+                                deck.libCartella = nome
+                                deck.libSelezione = 0
+                            }
                         }
                     }
                 }
                 else -> {
-                    val brani = when (scheda) {
-                        1 -> app.libreria.filter { it.cartella == cartella }
-                        3 -> app.recenti.mapNotNull { id -> app.libreria.firstOrNull { it.id == id } }
-                        else -> app.libreria
-                    }.filter(::corrisponde)
-                    LazyColumn(Modifier.fillMaxSize()) {
-                        if (scheda == 1) item { RigaCartella("◂ ${cartella!!.ifEmpty { "Memoria del telefono" }}", brani.size) { cartella = null } }
-                        items(brani, key = { it.id }) { b ->
-                            RigaBrano(b, app.bpmNoti[b.chiave], caricato = deck.brano?.id == b.id) { c.caricaBrano(d, b) }
+                    val brani = braniVisibili(app, deck)
+                    val cartella = deck.libCartella
+                    val sopra = if (deck.libScheda == 1) 1 else 0  // riga "◂ cartella" in cima
+                    // il brano scelto col controller resta visibile
+                    LaunchedEffect(deck.libSelezione, brani.size) {
+                        if (brani.isNotEmpty()) lista.animateScrollToItem((deck.libSelezione.coerceIn(0, brani.size - 1) + sopra - 3).coerceAtLeast(0))
+                    }
+                    LazyColumn(Modifier.fillMaxSize(), state = lista) {
+                        if (deck.libScheda == 1 && cartella != null) {
+                            item { RigaCartella("◂ ${cartella.ifEmpty { "Memoria del telefono" }}", brani.size) { deck.libCartella = null } }
+                        }
+                        itemsIndexed(brani, key = { _, b -> b.id }) { i, b ->
+                            RigaBrano(
+                                b, app.bpmNoti[b.chiave], caricato = deck.brano?.id == b.id,
+                                scelto = app.midi.dispositivo != null && i == deck.libSelezione,
+                            ) { c.caricaBrano(d, b) }
                         }
                     }
                 }
@@ -134,12 +142,18 @@ fun LibreriaDeck(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = Mod
 }
 
 @Composable
-private fun RigaBrano(b: Brano, bpm: Double?, caricato: Boolean, onTocco: () -> Unit) {
+private fun RigaBrano(b: Brano, bpm: Double?, caricato: Boolean, scelto: Boolean, onTocco: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
             .height(30.dp)
-            .background(if (caricato) Color.White.copy(alpha = 0.04f) else Color.Transparent)
+            .background(
+                when {
+                    scelto -> Color.White.copy(alpha = 0.10f)
+                    caricato -> Color.White.copy(alpha = 0.04f)
+                    else -> Color.Transparent
+                },
+            )
             .pointerInput(b.id) { detectTapGestures { onTocco() } }
             .padding(horizontal = 9.dp),
         verticalAlignment = Alignment.CenterVertically,
