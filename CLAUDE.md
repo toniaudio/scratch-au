@@ -132,6 +132,14 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
   (`DescrizioneFx.asseY`: echo/dub feedback, reverb stanza, stretch tono); dito giù = suona, su = svanisce (code;
   stretch in dissolvenza ~0,5 s); secondo dito = HOLD, il tocco dopo lo fa svanire; se era già acceso dal pad del
   deck il trackpad lo modula soltanto.
+- **Pre-ascolto + One Deck** (29/10): `Mixer` ha la cuffia per canale (prima del fader), CUE/MASTER e volume
+  cuffie; `Motore::render(…, canali)`: con 4+ canali master su 1-2 e cuffie su 3-4 (`Uscita::impostaCuffie`,
+  Oboe a 4 canali sulla scheda USB, senza conversione; se la scheda sparisce si torna stereo e l'app lo vede da
+  `stato[36]`). Si attiva in Opzioni › Audio; tasti cuffia nel mixer (telefono: anche accanto a FILTRO nella vista DECK).
+  **One Deck** (Opzioni › Generale): deck A + `Campionatore` (engine) a 8 pad sul canale B (UNA VOLTA / LOOP / TIENI,
+  dissolvenze 2/8 ms), pannello al posto del deck B, libreria per i pad, MODIFICA (menu: cambia suono, modo, togli),
+  STOP; suoni e modi salvati ("campionatore") e ricaricati dopo la lettura della libreria. MIDI: CUFFIA, MIX/VOLUME
+  CUFFIE, CAMPIONE_1…8.
 - iOS valutato (28/10): fattibile (motore C++ riusabile, UI con Compose Multiplatform), ma con Apple ID gratuito la
   firma scade ogni 7 giorni (o 99 €/anno). L'utente ha deciso: **per ora resta solo Android**.
 - Prossimo: prova vera dell'utente (MIDI con l'X-Session, DVS con scheda USB), poi pre-ascolto in cuffia
