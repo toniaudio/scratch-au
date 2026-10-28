@@ -25,7 +25,7 @@ class PonteFinto : Ponte {
         mixer[parametro to canale] = valore
     }
 
-    override fun stato(dest: DoubleArray) = istantanea.copyInto(dest)
+    override fun stato(dest: DoubleArray) { istantanea.copyInto(dest) }
 }
 
 class PiattaformaFinta(var brani: List<Brano> = emptyList()) : Piattaforma {
