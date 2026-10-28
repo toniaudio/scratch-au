@@ -82,9 +82,9 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
 2. Motore: 2 deck, scratch con frizione/motore, gain, EQ, filtro, volumi, crossfader, master. Test su Linux.
 3. Caricamento brani, waveform colorata con zoom, libreria, UI come da bozze, opzioni.
 4. BPM + beatgrid + SYNC, keylock. 5. Hot cue, loop. 6. FX (echo, dub delay, reverb, stretch).
-7. X-Session via USB MIDI con LEARN. 8. REC del mix.
-9. Futuro: scheda audio USB multicanale → pre-ascolto in cuffia; **DVS con timecode Serato** (decoder di xwax, GPL:
-   va bene, il repo è pubblico). Serve scheda class-compliant con 4 ingressi (meglio phono) + 4 uscite.
+7. X-Session via USB MIDI con LEARN. 8. REC del mix. (Fatte tutte, 28/10.)
+9. **DVS con timecode** fatto (28/10, decoder nostro coi parametri di xwax, GPL: va bene, il repo è pubblico).
+   Futuro: scheda audio USB multicanale → pre-ascolto in cuffia (serve scheda class-compliant con 4 uscite).
 
 ## Stato
 
@@ -107,11 +107,31 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
   frenate, avvii e per ~120 ms dopo un salto si usa il suono diretto con dissolvenza di 10 ms.
   `splitComputation` è indispensabile: senza, ogni 20 ms un blocco audio impiegava fino a 1–4 ms (su 2 ms disponibili).
   Carico misurato (server): 2 deck con keylock ≈ 4% di un core, 99,9% dei blocchi da 2 ms sotto 0,3 ms.
-- Prossimo: tappa 3 (caricamento brani, waveform, UI come da bozze).
+- **Tappa 3 fatta** (27-28/10/2026): schermata vera (Compose) come da bozze, caricamento brani (MediaStore +
+  MediaCodec), waveform e BPM salvati in cache, libreria per deck, opzioni. Foto automatiche della schermata con
+  Robolectric + Roborazzi (job `schermate`, prerelease "schermate", `app/src/test/.../SchermateTest.kt`).
+  Fader e crossfader ridisegnati "da mixer vero" (fessura, tacche, cappuccio zigrinato), cursori sottili nelle opzioni.
+- **FX fatti** (28/10): `engine/Effetti.*`, uno per deck prima del mixer. ECHO (feedback), DUB DELAY (feedback fino
+  a 1,1 saturato, tono nel giro, "wow" del nastro), REVERB (Freeverb: stanza, damp, coda corta/media/lunga),
+  STRETCH granulare (grana 10–120 ms, tono ±12 st, ½ ¼ ⅛ FREEZE). Ogni tipo ricorda le sue regolazioni; le code
+  continuano dopo lo spegnimento. Tempo dagli BPM × pitch (`secondiBattito`). Pad FX: tocco = on/off, tenuto = momentaneo.
+- **MIDI fatto** (28/10): `Midi.kt` (azioni, LettoreMidi con running status, procedura guidata), `MidiUsb.kt`
+  (android.media.midi). Il preset X-Session Pro NON è precaricato (manuale coi CC non raggiungibile da qui):
+  c'è la **configurazione guidata** (un controllo alla volta). LEARN sulla schermata (bordi verdi) e nell'elenco
+  delle opzioni (anche comandi senza tasto: libreria su/giù/scorri/carica). Assegnazioni in preferenza "midi".
+- **DVS fatto** (28/10): `engine/Timecode.*` (velocità dall'angolo dei canali in quadratura con doppio filtro da
+  1,5 ms; bit LFSR come xwax; calibrazione; scope), `Anello.h` (ingresso → thread audio), ingresso Oboe in
+  `IngressoDvs` (InputPreset::Unprocessed, stessa frequenza dell'uscita). Deck con `dvs` acceso: velocità dal
+  vinile; in assoluta salta alla posizione quando la puntina viene appoggiata (o se salta, senza protezione).
+  Provato SOLO con segnale sintetico (round-trip dei formati): da verificare con scheda e vinili veri.
+- Prossimo: prova vera dell'utente (MIDI con l'X-Session, DVS con scheda USB), poi pre-ascolto in cuffia
+  (scheda multicanale), playlist, keylock durante il DVS (ora spento in DVS).
 
 ## Da ricordare (scelte tecniche)
 
 - Il thread dell'interfaccia deve chiamare `Deck::raccogliTracceVecchie()` (es. a ogni frame): libera i brani sostituiti.
 - Quando si collega il motore vero al JNI, `Motore::prepara()` va chiamato solo con il flusso fermo (apri/riapri).
 - Chiudere Oboe tenendo il mutex mentre arriva un `onErrorAfterClose` potrebbe in teoria bloccarsi: caso rarissimo
-  (scollegamento del dispositivo nello stesso istante della chiusura), da rivedere se capita.
+  (scollegamento del dispositivo nello stesso istante della chiusura), da rivedere se capita. (L'ingresso DVS usa try_lock.)
+- DVS a schermo spento: Android silenzia l'ingresso delle app in background; servirebbe il servizio in primo piano
+  di tipo "microphone" (ora solo mediaPlayback). Lo schermo resta acceso durante l'uso, quindi per ora va bene.
