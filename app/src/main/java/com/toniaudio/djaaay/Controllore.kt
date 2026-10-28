@@ -220,11 +220,12 @@ class Controllore(
     // ------------------------------------------------------------------ effetti
     private val battitoInviato = doubleArrayOf(-1.0, -1.0)
 
-    fun fxAcceso(d: Int, acceso: Boolean) {
+    /** Accende o spegne un effetto (`t`, se non si dice: quello scelto); gli altri non cambiano. */
+    fun fxAcceso(d: Int, acceso: Boolean, t: Int = stato.deck[d].fx.tipo) {
         val fx = stato.deck[d].fx
-        fx.acceso = acceso
-        if (!acceso) fx.hold = false
-        ponte.impostaFx(d, ParFx.ACCESO, fx.tipo, if (acceso) 1f else 0f)
+        fx.accesi[t] = acceso
+        if (!acceso) fx.tenuti[t] = false
+        ponte.impostaFx(d, ParFx.ACCESO, t, if (acceso) 1f else 0f)
     }
 
     fun fxTipo(d: Int, tipo: Int) {
@@ -234,10 +235,9 @@ class Controllore(
     }
 
     /** Valori dell'effetto scelto (trackpad e MIDI): `quale` 0 = DRY/WET, 1 e 2 = parametri. */
-    fun fxManopola(d: Int, quale: Int, valore: Float) {
+    fun fxManopola(d: Int, quale: Int, valore: Float, t: Int = stato.deck[d].fx.tipo) {
         val fx = stato.deck[d].fx
         val v = valore.coerceIn(0f, 1f)
-        val t = fx.tipo
         when (quale) {
             0 -> { fx.dryWet[t] = v; ponte.impostaFx(d, ParFx.DRY_WET, t, v) }
             1 -> { fx.param1[t] = v; ponte.impostaFx(d, ParFx.PARAM1, t, v) }
@@ -255,60 +255,63 @@ class Controllore(
     }
 
     /**
-     * L'effetto suona solo finché è premuto (trackpad o tasto MIDI): premuto = acceso, lasciato = svanisce con la
-     * sua coda. Se è bloccato (HOLD), il tocco dopo lo libera e lasciando svanisce.
+     * Un effetto suona solo finché è premuto (trackpad o tasto MIDI): premuto = acceso, lasciato = svanisce con la
+     * sua coda. Se è bloccato (HOLD), il tocco dopo lo libera e lasciando svanisce. Ogni effetto per conto suo.
      */
-    fun fxPremi(d: Int) {
+    fun fxPremi(d: Int, t: Int = stato.deck[d].fx.tipo) {
         val fx = stato.deck[d].fx
         when {
-            fx.hold -> {
-                fx.hold = false
-                fx.spegniAlRilascio = true
+            fx.tenuti[t] -> {
+                fx.tenuti[t] = false
+                fx.spegniAlRilascio[t] = true
             }
-            !fx.acceso -> {
-                fxAcceso(d, true)
-                fx.spegniAlRilascio = true
+            !fx.accesi[t] -> {
+                fxAcceso(d, true, t)
+                fx.spegniAlRilascio[t] = true
             }
         }
     }
 
-    fun fxLascia(d: Int) {
+    fun fxLascia(d: Int, t: Int = stato.deck[d].fx.tipo) {
         val fx = stato.deck[d].fx
-        if (!fx.hold && fx.spegniAlRilascio) fxAcceso(d, false)
-        fx.spegniAlRilascio = false
+        if (!fx.tenuti[t] && fx.spegniAlRilascio[t]) fxAcceso(d, false, t)
+        fx.spegniAlRilascio[t] = false
     }
 
     /** HOLD: l'effetto acceso resta acceso anche lasciando (secondo dito sul trackpad, o tasto MIDI). */
-    fun fxTieni(d: Int) {
+    fun fxTieni(d: Int, t: Int = stato.deck[d].fx.tipo) {
         val fx = stato.deck[d].fx
-        if (fx.acceso) fx.hold = true
+        if (fx.accesi[t]) fx.tenuti[t] = true
     }
 
-    /** Tasto MIDI "FX hold": blocca l'effetto che sta suonando, o spegne quello bloccato. */
+    /** Tasto MIDI "FX hold": blocca l'effetto scelto che sta suonando, o spegne quello bloccato. */
     fun fxHoldMidi(d: Int) {
         val fx = stato.deck[d].fx
         if (fx.hold) fxAcceso(d, false) else fxTieni(d)
     }
 
-    /** Trackpad: X = dry/wet, Y = il parametro principale dell'effetto. Dito giù = suona, su = svanisce. */
+    /** Trackpad: X = dry/wet, Y = il parametro principale dell'effetto scelto. Dito giù = suona, su = svanisce. */
     fun fxTrackpadGiu(d: Int, x: Float, y: Float) {
-        stato.deck[d].fx.toccato = true
+        val fx = stato.deck[d].fx
+        fx.toccato = true
+        fx.tipoTrackpad = fx.tipo
         fxTrackpadSposta(d, x, y)
-        fxPremi(d)
+        fxPremi(d, fx.tipoTrackpad)
     }
 
     fun fxTrackpadSposta(d: Int, x: Float, y: Float) {
-        val fx = stato.deck[d].fx
-        fxManopola(d, 0, x)
-        fxManopola(d, EFFETTI[fx.tipo].asseY, y)
+        val t = stato.deck[d].fx.tipoTrackpad  // l'effetto che il dito sta suonando
+        fxManopola(d, 0, x, t)
+        fxManopola(d, EFFETTI[t].asseY, y, t)
     }
 
-    /** Un secondo dito sul trackpad: HOLD. */
-    fun fxTrackpadTieni(d: Int) = fxTieni(d)
+    /** Un secondo dito sul trackpad: HOLD dell'effetto che il dito sta suonando. */
+    fun fxTrackpadTieni(d: Int) = fxTieni(d, stato.deck[d].fx.tipoTrackpad)
 
     fun fxTrackpadSu(d: Int) {
-        stato.deck[d].fx.toccato = false
-        fxLascia(d)
+        val fx = stato.deck[d].fx
+        fx.toccato = false
+        fxLascia(d, fx.tipoTrackpad)
     }
 
     /** Manda al motore tutte le regolazioni degli effetti (all'avvio). */
@@ -321,8 +324,7 @@ class Controllore(
                 ponte.impostaFx(d, ParFx.PARAM2, t, fx.param2[t])
                 ponte.impostaFx(d, ParFx.SCELTA, t, fx.scelta[t].toFloat())
             }
-            ponte.impostaFx(d, ParFx.TIPO, fx.tipo, fx.tipo.toFloat())
-            ponte.impostaFx(d, ParFx.ACCESO, fx.tipo, if (fx.acceso) 1f else 0f)
+            for (t in EFFETTI.indices) ponte.impostaFx(d, ParFx.ACCESO, t, if (fx.accesi[t]) 1f else 0f)
         }
     }
 
@@ -529,12 +531,21 @@ class Controllore(
             AzioneMidi.MIX_CUFFIE -> mixCuffie(v)
             AzioneMidi.VOLUME_CUFFIE -> volumeCuffie(v)
             // FX: suona finché il tasto è premuto (come il trackpad); i tasti degli effetti scelgono anche l'effetto
-            AzioneMidi.FX_ON -> if (pressione) fxPremi(d) else if (!premuto && eraPremuto) fxLascia(d)
-            in AZIONI_PAD_FX -> if (pressione) {
-                fxTipo(d, AZIONI_PAD_FX.indexOf(a.azione))
+            AzioneMidi.FX_ON -> if (pressione) {
+                stato.deck[d].fx.tipoMidi = stato.deck[d].fx.tipo
                 fxPremi(d)
             } else if (!premuto && eraPremuto) {
-                fxLascia(d)
+                fxLascia(d, stato.deck[d].fx.tipoMidi)
+            }
+            // un tasto per effetto: si possono tenere premuti più effetti insieme
+            in AZIONI_PAD_FX -> {
+                val t = AZIONI_PAD_FX.indexOf(a.azione)
+                if (pressione) {
+                    fxTipo(d, t)
+                    fxPremi(d, t)
+                } else if (!premuto && eraPremuto) {
+                    fxLascia(d, t)
+                }
             }
             in AZIONI_CAMPIONE -> {
                 val pad = AZIONI_CAMPIONE.indexOf(a.azione)

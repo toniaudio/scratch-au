@@ -90,8 +90,13 @@ class SchermateTest {
     @Test fun fx() = foto("6-fx") { s, c ->
         s.vista = 3
         c.fxTipo(0, 1)  // DUB DELAY scelto sul deck A, spento
-        c.fxTipo(1, 3)  // ROLL sul deck B: dito giù + secondo dito = HOLD
-        c.fxTrackpadGiu(1, 0.7f, 0.5f)
+        // deck B: REVERB bloccato (HOLD), poi ROLL col tono in su bloccato anche lui: suonano insieme
+        c.fxTipo(1, 2)
+        c.fxTrackpadGiu(1, 0.4f, 0.6f)
+        c.fxTrackpadTieni(1)
+        c.fxTrackpadSu(1)
+        c.fxTipo(1, 3)
+        c.fxTrackpadGiu(1, 0.7f, 0.8f)
         c.fxTrackpadTieni(1)
         c.fxTrackpadSu(1)
     }

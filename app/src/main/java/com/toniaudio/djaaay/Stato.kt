@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /** Un brano della libreria del telefono. */
@@ -52,14 +53,18 @@ class DescrizioneFx(
     val asseY: Int,  // parametro sull'asse Y del trackpad: 1 o 2 (l'asse X è il dry/wet)
 )
 
+/** Lunghezze del ROLL in battiti, come kBattitiRoll in engine/Effetti.h. */
+val LUNGHEZZE_ROLL = listOf("1/16", "1/8", "1/4", "1/2", "1")
+
 /** I quattro effetti, nello stesso ordine di TipoEffetto in engine/Effetti.h. */
 val EFFETTI = listOf(
     // tempi in battiti: indici di kBattute = ⅛ ¼ ½ ¾ 1 2 4
     DescrizioneFx("ECHO", "ECHO", listOf("FEEDBACK"), "TEMPO (BATTUTE)", listOf("1/8", "1/4", "1/2", "1", "2"), listOf(0, 1, 2, 4, 5), 1),
     DescrizioneFx("DUB DELAY", "DUB", listOf("FEEDBACK", "TONO"), "TEMPO (BATTUTE)", listOf("1/4", "1/2", "3/4", "1", "2"), listOf(1, 2, 3, 4, 5), 1),
     DescrizioneFx("REVERB", "VERB", listOf("STANZA", "DAMP"), "CODA", listOf("corta", "media", "lunga"), listOf(0, 1, 2), 1),
-    // ROLL: l'asse Y sceglie quanto si ripete (1/16 … 1 battito), la riga il verso
-    DescrizioneFx("ROLL", "ROLL", listOf("LUNGHEZZA"), "VERSO", listOf("AVANTI", "INDIETRO"), listOf(0, 1), 1),
+    // ROLL: la riga sceglie quanto si ripete (1/16 … 1 battito), l'asse Y il tono (su = più alto, giù = più basso);
+    // il parametro 2 (solo da MIDI) lo fa andare al contrario
+    DescrizioneFx("ROLL", "ROLL", listOf("TONO", "AL CONTRARIO"), "LUNGHEZZA (BATTUTE)", LUNGHEZZE_ROLL, listOf(0, 1, 2, 3, 4), 1),
 )
 
 /** Testo sotto una manopola dell'effetto: `quale` 0 = DRY/WET, 1 e 2 = parametri. */
@@ -69,25 +74,40 @@ fun testoFx(tipo: Int, quale: Int, v: Float): String {
     return when (tipo to quale) {
         1 to 2 -> if (v < 0.35f) "scuro" else if (v > 0.65f) "brillante" else "medio"
         2 to 1 -> if (v < 0.35f) "piccola" else if (v > 0.65f) "grande" else "media"
-        3 to 1 -> LUNGHEZZE_ROLL[(v * LUNGHEZZE_ROLL.size).toInt().coerceIn(0, LUNGHEZZE_ROLL.size - 1)]
+        3 to 1 -> semitoniRoll(v).roundToInt().let { if (it == 0) "tono normale" else "%+d st".format(it) }
+        3 to 2 -> if (v >= 0.5f) "al contrario" else "avanti"
         else -> percento
     }
 }
 
-/** Lunghezze del ROLL in battiti, come kBattitiRoll in engine/Effetti.h. */
-val LUNGHEZZE_ROLL = listOf("1/16", "1/8", "1/4", "1/2", "1")
+/** Tono del ROLL dall'asse Y, come semitoniRoll in engine/Effetti.cpp: centro fermo, ±12 semitoni. */
+fun semitoniRoll(y: Float): Float {
+    val d = y.coerceIn(0f, 1f) - 0.5f
+    val morta = 0.04f
+    if (abs(d) <= morta) return 0f
+    return Math.copySign((abs(d) - morta) / (0.5f - morta) * 12f, d)
+}
 
-/** Effetti di un deck. Ogni tipo ricorda le sue regolazioni (indice 0 echo, 1 dub, 2 reverb, 3 roll). */
+/**
+ * Effetti di un deck (indice 0 echo, 1 dub, 2 reverb, 3 roll). Ognuno è indipendente: si accende, si blocca (HOLD)
+ * e ricorda le sue regolazioni per conto suo, e possono suonare insieme. `tipo` è quello che comanda il trackpad.
+ */
 class StatoFx {
-    var acceso by mutableStateOf(false)
     var tipo by mutableIntStateOf(0)
+    val accesi = mutableStateListOf(false, false, false, false)
+    val tenuti = mutableStateListOf(false, false, false, false)  // HOLD: resta acceso finché non si ritocca
     val dryWet = mutableStateListOf(0.35f, 0.45f, 0.30f, 1.0f)
     val param1 = mutableStateListOf(0.4f, 0.7f, 0.7f, 0.5f)
     val param2 = mutableStateListOf(0f, 0.2f, 0.5f, 0f)
-    val scelta = mutableStateListOf(1, 3, 2, 0)  // indice nel motore (vedi DescrizioneFx.indici)
-    var hold by mutableStateOf(false)       // bloccato (secondo dito o tasto MIDI): resta acceso finché non si ritocca
+    val scelta = mutableStateListOf(1, 3, 2, 2)  // indice nel motore (vedi DescrizioneFx.indici)
     var toccato by mutableStateOf(false)    // un dito sul trackpad
-    var spegniAlRilascio = false
+    val spegniAlRilascio = BooleanArray(4)  // acceso da questa pressione: lasciando si spegne
+    var tipoTrackpad = 0                    // effetto acceso dal dito sul trackpad (resta quello anche cambiando)
+    var tipoMidi = 0                        // effetto acceso dal tasto MIDI "FX"
+
+    /** L'effetto scelto suona / è bloccato. */
+    val acceso: Boolean get() = accesi[tipo]
+    val hold: Boolean get() = tenuti[tipo]
 }
 
 class StatoDeck(val indice: Int) {

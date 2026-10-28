@@ -49,7 +49,9 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
   stile scritte EQ; tocco = cambia curva. Inverti (hamster) nelle Opzioni / MIDI.
 - **FX**: un'unità per deck (FX · DECK A, FX · DECK B) nella sezione FX: scelta tra **ECHO, DUB DELAY, REVERB, ROLL**,
   solo **trackpad** (niente manopole né ON): dito giù = suona, su = svanisce con la coda; secondo dito = HOLD.
-  X = dry/wet, Y = parametro principale; riga tempo (battute) / coda / verso (roll avanti-indietro).
+  X = dry/wet, Y = parametro principale (roll: TONO, centro normale, ±12 st); riga tempo / coda / lunghezza del roll.
+  **Effetti indipendenti** (richiesta 28/10): ognuno ha acceso e HOLD suoi, possono suonare insieme; cambiare effetto
+  non tocca gli altri (pulsante pieno = suona, punto verde = HOLD, bordo/lineetta = quello del trackpad).
   Niente FX nei deck (29/10: pad del deck solo HOT CUE · LOOP). Valori comandabili da MIDI. Keylock è separato (tasto KEY).
 - **Libreria per deck**: il pulsante libreria di un deck apre la libreria DENTRO lo spazio di quel deck (sotto le waveform,
   senza coprire il mixer). Ricerca, tab Tutti / Cartelle / Playlist / Recenti, BPM e durata; tocco su un brano = caricato
@@ -153,6 +155,10 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
   - STRETCH tolto → **ROLL** (ripete 1/16…1 battito dal momento in cui si accende; Y = lunghezza a 5 fasce, riga
     AVANTI/INDIETRO, dissolvenza 4 ms al giro). MIDI: FX_ON/FX_ECHO…FX_ROLL suonano finché premuti, FX_HOLD.
   - Doppio tocco: volumi a 0 dB (in alto), pitch al centro, crossfader al centro (due tocchi brevi e fermi).
+  - Poi: FX indipendenti (`Effetto::acceso[4]`, catena ROLL → ECHO/DUB/REVERB in parallelo); ROLL rifatto (era
+    "sgranato"): ripete il pezzo appena prima a tempo, Y = tono (lettura più veloce/lenta col ritmo che resta: in su
+    il pezzo si ripete più volte nel giro), riga = lunghezza 1/16…1, al contrario solo da MIDI (parametro 2);
+    ogni salto è una dissolvenza a potenza costante tra voci (fino a 3 che sfumano, mai uno stacco).
 - iOS valutato (28/10): fattibile (motore C++ riusabile, UI con Compose Multiplatform), ma con Apple ID gratuito la
   firma scade ogni 7 giorni (o 99 €/anno). L'utente ha deciso: **per ora resta solo Android**.
 - Prossimo: prova vera dell'utente (MIDI con l'X-Session, DVS con scheda USB), poi pre-ascolto in cuffia

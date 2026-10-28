@@ -152,6 +152,41 @@ class ControlloreTest {
     }
 
     @Test
+    fun effettiIndipendentiCheSuonanoInsieme() {
+        val fx = stato.deck[0].fx
+        // ECHO bloccato con il secondo dito
+        c.fxTipo(0, 0)
+        c.fxTrackpadGiu(0, 0.5f, 0.5f)
+        c.fxTrackpadTieni(0)
+        c.fxTrackpadSu(0)
+        // si passa al ROLL: l'echo resta acceso e bloccato
+        c.fxTipo(0, 3)
+        assertTrue(fx.accesi[0])
+        assertTrue(fx.tenuti[0])
+        c.fxTrackpadGiu(0, 0.8f, 0.9f)
+        assertTrue(fx.accesi[3])
+        assertEquals(1f, ponte.fx[Triple(0, ParFx.ACCESO, 0)])
+        assertEquals(1f, ponte.fx[Triple(0, ParFx.ACCESO, 3)])
+        assertEquals(0.9f, fx.param1[3])  // il dito comanda solo il roll
+        assertEquals(0.5f, fx.param1[0])
+        c.fxTrackpadSu(0)
+        assertEquals(false, fx.accesi[3])
+        assertTrue(fx.accesi[0])
+        // dito giù sul roll e cambio effetto mentre è giù: lasciando si spegne il roll, non l'altro
+        c.fxTrackpadGiu(0, 0.5f, 0.5f)
+        c.fxTipo(0, 2)
+        c.fxTrackpadSu(0)
+        assertEquals(false, fx.accesi[3])
+        assertTrue(fx.accesi[0])
+        // un tocco sull'echo lo sblocca e lasciando svanisce
+        c.fxTipo(0, 0)
+        c.fxTrackpadGiu(0, 0.5f, 0.5f)
+        c.fxTrackpadSu(0)
+        assertEquals(false, fx.accesi[0])
+        assertEquals(0f, ponte.fx[Triple(0, ParFx.ACCESO, 0)])
+    }
+
+    @Test
     fun fxDalMidiSuonaFinchePremutoEHold() {
         // tasto "FX Roll": sceglie il ROLL e suona finché è premuto
         c.learnScegli(AzioneMidi.FX_ROLL, 0)
@@ -196,9 +231,9 @@ class ControlloreTest {
         c.impostaPitch(1, 0.05f)
         c.aggiornaDaMotore()
         assertEquals((0.6 / 1.05).toFloat(), ponte.fx[Triple(1, ParFx.BATTITO, 0)]!!, 1e-5f)
-        assertEquals("1/16", testoFx(3, 1, 0f))
-        assertEquals("1/4", testoFx(3, 1, 0.5f))
-        assertEquals("1", testoFx(3, 1, 1f))
+        assertEquals("-12 st", testoFx(3, 1, 0f))
+        assertEquals("tono normale", testoFx(3, 1, 0.52f))
+        assertEquals("+12 st", testoFx(3, 1, 1f))
     }
 
     private fun cc(canale: Int, numero: Int, valore: Int) = c.midi(MessaggioMidi(SorgenteMidi(false, canale, numero), valore))

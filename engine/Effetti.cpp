@@ -43,8 +43,9 @@ Effetto::Effetto() {
     const float dw[4] = {0.35f, 0.45f, 0.30f, 1.0f};
     const float p1[4] = {0.4f, 0.7f, 0.7f, 0.5f};
     const float p2[4] = {0.0f, 0.2f, 0.5f, 0.0f};
-    const int sc[4] = {1, 3, 2, 0};  // 1/4 · 3/4 · lunga · avanti
+    const int sc[4] = {1, 3, 2, 2};  // 1/4 · 3/4 · lunga · 1/4
     for (int t = 0; t < 4; ++t) {
+        acceso[t].store(false);
         dryWet[t].store(dw[t]);
         param1[t].store(p1[t]);
         param2[t].store(p2[t]);
@@ -57,7 +58,8 @@ void Effetto::prepara(double sampleRate) {
     const float sr = static_cast<float>(sampleRate);
     kRampa_ = coeffSmooth(0.015f, sr);
     kTempo_ = coeffSmooth(0.08f, sr);
-    incrocio_ = std::max(8, static_cast<int>(0.004 * sampleRate));
+    incrocioMin_ = std::max(8, static_cast<int>(0.001 * sampleRate));
+    incrocioMax_ = std::max(incrocioMin_, static_cast<int>(0.010 * sampleRate));
     coeffLpEco_ = std::exp(-2.0f * kPi * 9000.0f / sr);
 
     const int linea = static_cast<int>(kLinea * sampleRate) + 8;
@@ -84,9 +86,38 @@ void Effetto::prepara(double sampleRate) {
     }
     rollVivo_ = false;
     pesoRoll_ = 0.0f;
+    entrata_ = 0;
+    for (auto& u : uscenti_) u.resto = 0;
 }
 
-int indiceRoll(float param1) { return std::clamp(static_cast<int>(param1 * kNumRoll), 0, kNumRoll - 1); }
+float semitoniRoll(float param1) {
+    const float d = std::clamp(param1, 0.0f, 1.0f) - 0.5f;
+    constexpr float kMorta = 0.04f;  // al centro il tono resta quello vero anche se il dito non è preciso
+    if (std::fabs(d) <= kMorta) return 0.0f;
+    return std::copysign((std::fabs(d) - kMorta) / (0.5f - kMorta) * 12.0f, d);
+}
+
+// Un campione del pezzo che si ripete (interpolazione lineare). Leggendo più veloce del normale (tono in su) si fa la
+// media dei punti scavalcati: niente fruscii metallici.
+float Effetto::leggiRoll(const VoceRoll& v, double passo, bool indietro, bool sinistro) const {
+    const double pos = v.pos, lunghezza = v.lunghezza;
+    const auto cap = static_cast<int64_t>(catturaL_.size());
+    const std::vector<float>& b = sinistro ? catturaL_ : catturaR_;
+    const double vecchio = static_cast<double>(std::max<int64_t>(0, catturati_ - cap + 2));
+    const double nuovo = static_cast<double>(catturati_ - 2);
+    const int n = passo > 1.0 ? std::min(4, static_cast<int>(std::ceil(passo))) : 1;
+    float somma = 0.0f;
+    for (int j = 0; j < n; ++j) {
+        const double o = n == 1 ? pos : pos + passo * ((j + 0.5) / n - 0.5);
+        double p = indietro ? static_cast<double>(rollAncora_) - 1.0 - o : static_cast<double>(rollAncora_) - lunghezza + o;
+        p = std::clamp(p, vecchio, nuovo);
+        const auto k = static_cast<int64_t>(p);
+        const float f = static_cast<float>(p - static_cast<double>(k));
+        const float a = b[static_cast<size_t>(k % cap)], c = b[static_cast<size_t>((k + 1) % cap)];
+        somma += a + (c - a) * f;
+    }
+    return somma / static_cast<float>(n);
+}
 
 void Effetto::svuota(int e) {
     if (e == kEcho) {
@@ -120,8 +151,8 @@ void Effetto::render(float* l, float* r, int frame) {
 }
 
 void Effetto::pezzo(float* l, float* r, int n) {
-    const bool on = acceso.load(std::memory_order_relaxed);
-    const int t = std::clamp(tipo.load(std::memory_order_relaxed), 0, 3);
+    bool on[4];
+    for (int k = 0; k < 4; ++k) on[k] = acceso[k].load(std::memory_order_relaxed);
     float p1[4], p2[4], w[4];
     for (int k = 0; k < 4; ++k) {
         p1[k] = std::clamp(param1[k].load(std::memory_order_relaxed), 0.0f, 1.0f);
@@ -143,12 +174,102 @@ void Effetto::pezzo(float* l, float* r, int n) {
     }
     catturati_ += n;
 
+    // --- ROLL (prima degli altri effetti: l'eco ripete il roll). Si ripete il pezzo appena prima di quando lo si
+    // accende (INDIETRO: al contrario), ripartendo a tempo ogni `lunghezza`. Il tono cambia la velocità di lettura
+    // ma non il ritmo: in su il pezzo si ripete più volte dentro il giro, in giù se ne sente l'inizio, più lento.
+    // Ogni salto (ripartenza, giro del pezzo, cambio di lunghezza) è una dissolvenza a potenza costante tra due voci.
+    auto lunghezzaRoll = [&](float b) {
+        const int li = std::clamp(scelta[kRoll].load(std::memory_order_relaxed), 0, kNumRoll - 1);
+        const double l = std::clamp(static_cast<double>(kBattitiRoll[li] * b) * sr_, 4.0 * incrocioMin_, static_cast<double>(cap) * 0.3);
+        return l;
+    };
+    if (on[kRoll] && !rollVivo_) {
+        rollVivo_ = true;
+        rollAncora_ = catturati_ - n;  // il pezzo finisce dove inizia questo blocco
+        voce_.pos = 0.0;
+        voce_.lunghezza = lunghezzaRoll(battito);
+        periodo_ = 0.0;
+        entrata_ = 0;
+        for (auto& u : uscenti_) u.resto = 0;
+        rapporto_ = std::pow(2.0, semitoniRoll(p1[kRoll]) / 12.0);
+    }
+    if (rollVivo_) {
+        const double lunghezza = lunghezzaRoll(battito);
+        const bool indietro = p2[kRoll] >= 0.5f;
+        const double bersaglioRapporto = std::pow(2.0, semitoniRoll(p1[kRoll]) / 12.0);
+        const float bersaglio = on[kRoll] ? 1.0f : 0.0f;
+        for (int i = 0; i < n; ++i) {
+            rapporto_ = bersaglioRapporto + (rapporto_ - bersaglioRapporto) * kRampa_;
+            // dissolvenze a potenza costante (seno in entrata, coseno in uscita)
+            auto guadagnoEntrata = [&] {
+                return entrata_ > 0 ? std::sin(0.5f * kPi * (1.0f - static_cast<float>(entrata_) / static_cast<float>(lungEntrata_))) : 1.0f;
+            };
+            const float gv = guadagnoEntrata();
+            float sl = leggiRoll(voce_, rapporto_, indietro, true) * gv;
+            float sr = leggiRoll(voce_, rapporto_, indietro, false) * gv;
+            if (entrata_ > 0) --entrata_;
+            for (auto& u : uscenti_) {
+                if (u.resto <= 0) continue;
+                const float g = u.g0 * std::cos(0.5f * kPi * (1.0f - static_cast<float>(u.resto) / static_cast<float>(u.durata)));
+                sl += leggiRoll(u.v, rapporto_, indietro, true) * g;
+                sr += leggiRoll(u.v, rapporto_, indietro, false) * g;
+                u.v.pos += rapporto_;
+                --u.resto;
+            }
+            voce_.pos += rapporto_;
+            periodo_ += 1.0;
+            // cambio di lunghezza (riga, o BPM che cambia di colpo): si riparte col pezzo nuovo; un BPM che cambia
+            // piano (pitch del deck) invece si segue senza ripartire
+            const bool cambiata = std::fabs(voce_.lunghezza - lunghezza) > 0.02 * lunghezza;
+            if (!cambiata) voce_.lunghezza = lunghezza;
+            const bool riparti = periodo_ >= lunghezza || cambiata;
+            // giro del pezzo (tono in su): se la ripartenza è vicina si aspetta lei, così due salti non si
+            // accavallano (la voce legge un attimo oltre la fine: c'è suono anche lì)
+            const double spazio = std::min(lunghezza, lunghezza / rapporto_);
+            const int incrocio = std::clamp(static_cast<int>(0.3 * spazio), incrocioMin_, incrocioMax_);
+            const bool giro = voce_.pos >= lunghezza && lunghezza - periodo_ >= 2.0 * incrocio;
+            if (riparti || giro) {
+                // la voce che suonava sfuma (in un posto libero, o al posto di quella più bassa)
+                Uscente* posto = &uscenti_[0];
+                for (auto& u : uscenti_) {
+                    if (u.resto <= 0) {
+                        posto = &u;
+                        break;
+                    }
+                    if (u.g0 * static_cast<float>(u.resto) / static_cast<float>(u.durata) <
+                        posto->g0 * static_cast<float>(posto->resto) / static_cast<float>(posto->durata))
+                        posto = &u;
+                }
+                posto->v = voce_;
+                posto->resto = posto->durata = incrocio;
+                posto->g0 = guadagnoEntrata();
+                entrata_ = lungEntrata_ = incrocio;
+                if (riparti) {
+                    periodo_ = cambiata ? 0.0 : std::fmod(periodo_, lunghezza);
+                    voce_.pos = 0.0;
+                    voce_.lunghezza = lunghezza;
+                } else {
+                    voce_.pos = std::fmod(voce_.pos, lunghezza);
+                }
+            }
+            pesoRoll_ = verso(pesoRoll_, bersaglio, kRampa_);
+            wet_[kRoll] = verso(wet_[kRoll], w[kRoll], kRampa_);
+            const float pr = pesoRoll_ * wet_[kRoll];
+            l[i] += (sl - l[i]) * pr;
+            r[i] += (sr - r[i]) * pr;
+        }
+        if (!on[kRoll] && pesoRoll_ < 1e-4f) {
+            rollVivo_ = false;
+            pesoRoll_ = 0.0f;
+        }
+    }
+
     std::fill(wL_, wL_ + n, 0.0f);
     std::fill(wR_, wR_ + n, 0.0f);
 
     // --- ECHO, DUB, REVERB: si elaborano finché sono accesi o hanno ancora una coda
     for (int e = 0; e < 3; ++e) {
-        const float bersaglio = (on && t == e) ? 1.0f : 0.0f;
+        const float bersaglio = on[e] ? 1.0f : 0.0f;
         if (bersaglio > 0.0f) {
             vita_[e] = kVitaSecondi * static_cast<int>(sr_);
         } else if (vita_[e] <= 0) {
@@ -243,56 +364,6 @@ void Effetto::pezzo(float* l, float* r, int n) {
                 mandata_[e] = 0.0f;
                 svuota(e);
             }
-        }
-    }
-
-    // --- ROLL: il pezzo che parte da quando lo si accende (INDIETRO: quello appena prima, letto al contrario) si
-    // ripete finché è acceso. Il primo giro in avanti è il suono stesso del deck: si entra senza salti.
-    // La lunghezza (asse Y) si può cambiare mentre gira; al giro una dissolvenza di ~4 ms evita il click.
-    const bool vuoleRoll = on && t == kRoll;
-    if (vuoleRoll && !rollVivo_) {
-        rollVivo_ = true;
-        rollIndietro_ = scelta[kRoll].load(std::memory_order_relaxed) == 1;
-        rollInizio_ = catturati_ - n;  // dall'inizio di questo blocco
-        rollPos_ = 0.0;
-    }
-    if (rollVivo_) {
-        const double lunghezza = std::clamp(static_cast<double>(kBattitiRoll[indiceRoll(p1[kRoll])] * battito) * sr_,
-                                            4.0 * incrocio_, static_cast<double>(cap) * 0.3);
-        if (rollPos_ >= lunghezza) rollPos_ = std::fmod(rollPos_, lunghezza);
-        const double piu = static_cast<double>(std::max<int64_t>(0, catturati_ - cap + 2));  // più vecchio in memoria
-        auto leggi = [&](double offset, float& sl, float& sr) {
-            // avanti: dal punto di partenza in poi; indietro: dal punto di partenza all'indietro
-            double p = rollIndietro_ ? static_cast<double>(rollInizio_) - 1.0 - offset : static_cast<double>(rollInizio_) + offset;
-            p = std::clamp(p, piu, static_cast<double>(catturati_ - 1));
-            const auto k = static_cast<size_t>(static_cast<int64_t>(p) % cap);
-            sl = catturaL_[k];
-            sr = catturaR_[k];
-        };
-        const float bersaglio = vuoleRoll ? 1.0f : 0.0f;
-        for (int i = 0; i < n; ++i) {
-            float sl, sr;
-            leggi(rollPos_, sl, sr);
-            const double mancano = lunghezza - rollPos_;
-            if (mancano < incrocio_) {
-                // verso la fine del pezzo entra in dissolvenza quello che segue il giro
-                float al, ar;
-                leggi(rollPos_ - lunghezza, al, ar);
-                const float a = static_cast<float>(mancano / incrocio_);
-                sl = sl * a + al * (1.0f - a);
-                sr = sr * a + ar * (1.0f - a);
-            }
-            rollPos_ += 1.0;
-            if (rollPos_ >= lunghezza) rollPos_ -= lunghezza;
-            pesoRoll_ = verso(pesoRoll_, bersaglio, kRampa_);
-            wet_[kRoll] = verso(wet_[kRoll], w[kRoll], kRampa_);
-            const float pr = pesoRoll_ * wet_[kRoll];
-            l[i] += (sl - l[i]) * pr;
-            r[i] += (sr - r[i]) * pr;
-        }
-        if (!vuoleRoll && pesoRoll_ < 1e-4f) {
-            rollVivo_ = false;
-            pesoRoll_ = 0.0f;
         }
     }
 

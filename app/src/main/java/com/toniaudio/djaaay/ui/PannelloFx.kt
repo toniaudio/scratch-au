@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,7 +37,6 @@ import com.toniaudio.djaaay.AzioneMidi
 import com.toniaudio.djaaay.Controllore
 import com.toniaudio.djaaay.AZIONI_PAD_FX
 import com.toniaudio.djaaay.EFFETTI
-import com.toniaudio.djaaay.LUNGHEZZE_ROLL
 import com.toniaudio.djaaay.StatoApp
 
 /** Scheda FX del mixer: un'unità per deck (FX · DECK A a sinistra, FX · DECK B a destra). */
@@ -70,13 +70,14 @@ private fun UnitaFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier, g
             if (d == 1 && app.opzioni.unDeck) "FX · CAMPIONATORE" else "FX · DECK ${app.deck[d].lettera}",
             Colori.Testo, if (grande) 12.sp else 8.5.sp, Modifier.fillMaxWidth(),
         )
-        // scelta dell'effetto: suona = pieno, scelto = bordato
+        // scelta dell'effetto (quello che comanda il trackpad, bordato); pieno = suona, punto verde = bloccato (HOLD).
+        // Gli effetti sono indipendenti: possono suonare in più insieme
         val righe = if (grande) listOf(listOf(0, 1, 2, 3)) else listOf(listOf(0, 1), listOf(2, 3))
         for (riga in righe) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(if (grande) 6.dp else 3.dp)) {
                 for (i in riga) {
                     val scelto = i == t
-                    val suona = scelto && fx.acceso
+                    val suona = fx.accesi[i]
                     Assegnabile(app, c, AZIONI_PAD_FX[i], d, Modifier.weight(1f).height(alto)) {
                         Tasto(
                             Modifier.fillMaxSize(),
@@ -84,11 +85,24 @@ private fun UnitaFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier, g
                             bordo = if (scelto && !suona) Colori.Neutro else null,
                             onTocco = { c.fxTipo(d, i) },
                         ) {
-                            Etichetta(
-                                EFFETTI[i].nome,
-                                if (suona) Colori.Sfondo else if (scelto) Colori.Testo else Colori.Spento,
-                                if (grande) 11.5.sp else 7.sp,
-                            )
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Etichetta(
+                                    EFFETTI[i].nome,
+                                    if (suona) Colori.Sfondo else if (scelto) Colori.Testo else Colori.Spento,
+                                    if (grande) 11.5.sp else 7.sp,
+                                )
+                                if (scelto && suona) {
+                                    // scelto e acceso: una lineetta sotto il nome (con più effetti accesi si vede quale comanda il trackpad)
+                                    Canvas(Modifier.align(Alignment.BottomCenter).padding(bottom = if (grande) 4.dp else 2.dp).fillMaxWidth(0.35f).height(2.dp)) {
+                                        drawRect(Colori.Sfondo)
+                                    }
+                                }
+                                if (fx.tenuti[i]) {
+                                    Canvas(Modifier.align(Alignment.CenterEnd).padding(end = if (grande) 8.dp else 4.dp).size(if (grande) 7.dp else 4.dp)) {
+                                        drawCircle(Colori.Verde)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -166,9 +180,11 @@ private fun TrackpadFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier
         Canvas(Modifier.fillMaxSize()) {
             val griglia = Colori.Linea.copy(alpha = 0.6f)
             for (k in 1..3) drawLine(griglia, Offset(size.width * k / 4, 0f), Offset(size.width * k / 4, size.height), 1f)
-            // ROLL: l'asse Y ha 5 lunghezze, una per fascia; gli altri effetti vanno a scala continua
-            val fasce = if (t == 3) LUNGHEZZE_ROLL.size else 4
-            for (k in 1 until fasce) drawLine(griglia, Offset(0f, size.height * k / fasce), Offset(size.width, size.height * k / fasce), 1f)
+            for (k in 1..3) {
+                // ROLL: la riga a metà (tono normale) è più marcata
+                val col = if (t == 3 && k == 2) Colori.Spento.copy(alpha = 0.7f) else griglia
+                drawLine(col, Offset(0f, size.height * k / 4), Offset(size.width, size.height * k / 4), if (t == 3 && k == 2) 1.5f else 1f)
+            }
             val px = x * size.width
             val py = (1f - y) * size.height
             val colore = if (fx.acceso) Colori.Testo else Colori.Scuro

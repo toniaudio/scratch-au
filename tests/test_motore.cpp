@@ -882,12 +882,11 @@ static void testEffetti() {
     {  // ECHO a 1 battito con battito da 0,25 s: eco a 0,25 s, poi a 0,5 s più piano
         Effetto e;
         e.prepara(sr);
-        e.tipo = kEcho;
         e.scelta[kEcho] = 4;
         e.secondiBattito = 0.25f;
         e.param1[kEcho] = 0.5f;
         e.dryWet[kEcho] = 1.0f;
-        e.acceso = true;
+        e.acceso[kEcho] = true;
         const auto y = passaEffetto(e, click, [](size_t) {});
         size_t dove = 1000;
         for (size_t i = 3000; i < static_cast<size_t>(0.45 * sr); ++i)
@@ -900,17 +899,16 @@ static void testEffetti() {
     {  // spento subito dopo il colpo: la coda continua (come sui mixer), ma riaccendendo dopo non torna l'eco vecchia
         Effetto e;
         e.prepara(sr);
-        e.tipo = kEcho;
         e.scelta[kEcho] = 4;
         e.secondiBattito = 0.25f;
         e.param1[kEcho] = 0.3f;
         e.dryWet[kEcho] = 1.0f;
-        e.acceso = true;
-        const auto y = passaEffetto(e, click, [&](size_t i) { if (i >= 9600) e.acceso = false; });
+        e.acceso[kEcho] = true;
+        const auto y = passaEffetto(e, click, [&](size_t i) { if (i >= 9600) e.acceso[kEcho] = false; });
         verifica(piccoTra(y, 0.25, 0.35, sr) > 0.3f, "echo: la coda continua dopo lo spegnimento");
         std::vector<float> silenzio(static_cast<size_t>(sr), 0.0f);
         passaEffetto(e, silenzio, [](size_t) {});
-        e.acceso = true;
+        e.acceso[kEcho] = true;
         const auto z = passaEffetto(e, silenzio, [](size_t) {});
         verifica(piccoTra(z, 0.0, 1.0, sr) < 1e-4f, "echo: riaccesa, niente eco vecchia");
     }
@@ -928,13 +926,12 @@ static void testEffetti() {
     {  // DUB DELAY al massimo del feedback: si auto-alimenta ma resta limitato
         Effetto e;
         e.prepara(sr);
-        e.tipo = kDub;
         e.scelta[kDub] = 2;
         e.secondiBattito = 0.5f;
         e.param1[kDub] = 1.0f;
         e.param2[kDub] = 0.6f;
         e.dryWet[kDub] = 1.0f;
-        e.acceso = true;
+        e.acceso[kDub] = true;
         std::vector<float> in(static_cast<size_t>(10 * sr), 0.0f);
         for (size_t i = 0; i < 4800; ++i) in[i] = 0.8f * static_cast<float>(std::sin(0.05 * static_cast<double>(i)));
         const auto y = passaEffetto(e, in, [](size_t) {});
@@ -944,86 +941,139 @@ static void testEffetti() {
     {  // REVERB: dopo un colpo c'è una coda che poi si spegne
         Effetto e;
         e.prepara(sr);
-        e.tipo = kReverb;
         e.param1[kReverb] = 0.5f;
         e.scelta[kReverb] = 1;
         e.dryWet[kReverb] = 1.0f;
-        e.acceso = true;
+        e.acceso[kReverb] = true;
         const auto y = passaEffetto(e, click, [](size_t) {});
         const float a = piccoTra(y, 0.15, 0.35, sr), b = piccoTra(y, 2.5, 3.0, sr);
         verifica(tuttiFiniti(y) && a > 1e-3f && b < a * 0.1f, "reverb: coda che si spegne");
     }
-    {  // ROLL avanti: dal momento in cui si accende si ripete 1/4 di battito (120 BPM → 0,125 s), poi si torna al deck
+    // rumore deterministico: ogni pezzo è diverso, così si vede da dove viene il suono
+    auto rumore = [&](double secondi, uint32_t x) {
+        std::vector<float> v(static_cast<size_t>(secondi * sr));
+        for (auto& c : v) {
+            x = x * 1664525u + 1013904223u;
+            c = 0.4f * (static_cast<float>(x >> 8) / 8388608.0f - 1.0f);
+        }
+        return v;
+    };
+    verifica(semitoniRoll(0.5f) == 0.0f && semitoniRoll(0.52f) == 0.0f && semitoniRoll(1.0f) == 12.0f &&
+                 semitoniRoll(0.0f) == -12.0f, "roll: asse Y → tono (centro fermo, ±12 semitoni)");
+    {  // ROLL avanti, tono normale: si ripete a tempo il quarto di battito appena prima, poi si torna al deck
         Effetto e;
         e.prepara(sr);
-        e.tipo = kRoll;
         e.secondiBattito = 0.5f;
-        e.param1[kRoll] = 0.5f;  // indice 2 = 1/4
+        e.scelta[kRoll] = 2;  // 1/4 → 0,125 s
         e.dryWet[kRoll] = 1.0f;
-        std::vector<float> in(static_cast<size_t>(3 * sr));
-        uint32_t x = 7;
-        for (auto& v : in) {
-            x = x * 1664525u + 1013904223u;
-            v = 0.4f * (static_cast<float>(x >> 8) / 8388608.0f - 1.0f);  // rumore: ogni pezzo è diverso
-        }
+        const auto in = rumore(3.0, 7);
         const size_t inizio = static_cast<size_t>(sr), fine = static_cast<size_t>(2 * sr);
         const size_t lung = static_cast<size_t>(0.125 * sr);
-        verifica(indiceRoll(0.5f) == 2 && indiceRoll(0.0f) == 0 && indiceRoll(1.0f) == kNumRoll - 1, "roll: asse Y → lunghezze 1/16…1");
-        const auto y = passaEffetto(e, in, [&](size_t i) { e.acceso = i >= inizio && i < fine; });
+        const auto y = passaEffetto(e, in, [&](size_t i) { e.acceso[kRoll] = i >= inizio && i < fine; });
         float errore = 0.0f;
-        for (size_t t = inizio + 2 * lung; t < fine - lung; ++t) {
+        for (size_t t = inizio + lung; t < fine - lung; ++t) {
             const size_t dentro = (t - inizio) % lung;
-            if (dentro < 300 || dentro > lung - 300) continue;  // dissolvenza al giro
-            errore = std::max(errore, std::fabs(y[t] - in[inizio + dentro]));
+            if (dentro < 600) continue;  // dissolvenza al giro
+            errore = std::max(errore, std::fabs(y[t] - in[inizio - lung + dentro]));
         }
-        verifica(tuttiFiniti(y) && errore < 1e-3f, "roll avanti: si ripete il pezzo partito quando lo si accende");
-        float primoGiro = 0.0f;
-        for (size_t t = inizio; t < inizio + lung - 300; ++t) primoGiro = std::max(primoGiro, std::fabs(y[t] - in[t]));
-        verifica(primoGiro < 1e-3f, "roll avanti: il primo giro è il suono del deck (si entra senza salti)");
+        verifica(tuttiFiniti(y) && errore < 1e-3f, "roll: si ripete a tempo il pezzo appena prima");
         float dopo = 0.0f;
         for (size_t t = fine + static_cast<size_t>(0.15 * sr); t < y.size(); ++t) dopo = std::max(dopo, std::fabs(y[t] - in[t]));
         verifica(dopo < 1e-3f, "roll spento: torna il deck");
     }
-    {  // ROLL indietro: il pezzo appena prima, al contrario
+    {  // ROLL al contrario (parametro 2, da MIDI)
         Effetto e;
         e.prepara(sr);
-        e.tipo = kRoll;
         e.secondiBattito = 0.5f;
-        e.param1[kRoll] = 0.5f;
-        e.scelta[kRoll] = 1;
+        e.scelta[kRoll] = 2;
+        e.param2[kRoll] = 1.0f;
         e.dryWet[kRoll] = 1.0f;
-        std::vector<float> in(static_cast<size_t>(2 * sr));
-        uint32_t x = 11;
-        for (auto& v : in) {
-            x = x * 1664525u + 1013904223u;
-            v = 0.4f * (static_cast<float>(x >> 8) / 8388608.0f - 1.0f);
-        }
+        const auto in = rumore(2.0, 11);
         const size_t inizio = static_cast<size_t>(sr), lung = static_cast<size_t>(0.125 * sr);
-        const auto y = passaEffetto(e, in, [&](size_t i) { e.acceso = i >= inizio; });
+        const auto y = passaEffetto(e, in, [&](size_t i) { e.acceso[kRoll] = i >= inizio; });
         float errore = 0.0f;
-        for (size_t t = inizio + 2 * lung; t < inizio + 6 * lung; ++t) {
+        for (size_t t = inizio + lung; t < inizio + 6 * lung; ++t) {
             const size_t dentro = (t - inizio) % lung;
-            if (dentro < 300 || dentro > lung - 300) continue;
+            if (dentro < 600) continue;
             errore = std::max(errore, std::fabs(y[t] - in[inizio - 1 - dentro]));
         }
-        verifica(tuttiFiniti(y) && errore < 1e-3f, "roll indietro: il pezzo prima, al contrario");
+        verifica(tuttiFiniti(y) && errore < 1e-3f, "roll al contrario: il pezzo prima, letto all'indietro");
     }
-    {  // ROLL su un tono: nessun click al giro, anche cambiando lunghezza mentre gira
+    // Tono del roll su un La: un'ottava su = 880 Hz, un'ottava giù = 220 Hz, e il ritmo resta quello
+    for (const float y1 : {1.0f, 0.0f}) {
         Effetto e;
         e.prepara(sr);
-        e.tipo = kRoll;
-        e.secondiBattito = 0.47f;
-        e.param1[kRoll] = 0.3f;
+        e.secondiBattito = 0.5f;
+        e.scelta[kRoll] = 4;  // 1 battito: pezzo lungo, si misura bene il tono
+        e.param1[kRoll] = y1;
         e.dryWet[kRoll] = 1.0f;
         std::vector<float> in(static_cast<size_t>(4 * sr));
+        for (size_t i = 0; i < in.size(); ++i) in[i] = 0.4f * static_cast<float>(std::sin(2.0 * M_PI * 440.0 * i / sr));
+        const auto y = passaEffetto(e, in, [&](size_t i) { e.acceso[kRoll] = i >= static_cast<size_t>(sr); });
+        std::vector<float> stereo;
+        for (size_t i = static_cast<size_t>(2.05 * sr); i < static_cast<size_t>(2.45 * sr); ++i) {
+            stereo.push_back(y[i]);
+            stereo.push_back(y[i]);
+        }
+        const double atteso = y1 > 0.5f ? 880.0 : 220.0;
+        char testo[96];
+        std::snprintf(testo, sizeof testo, "roll: tono %s di un'ottava (%.0f Hz)", y1 > 0.5f ? "su" : "giù", frequenza(stereo, sr));
+        verifica(tuttiFiniti(y) && std::fabs(frequenza(stereo, sr) - atteso) < atteso * 0.03, testo);
+    }
+    {  // Roll al massimo (1/16, tono +12, poi giù): nessun click, nessun buco, anche cambiando tono e lunghezza mentre gira
+        Effetto e;
+        e.prepara(sr);
+        e.secondiBattito = 0.47f;
+        e.dryWet[kRoll] = 1.0f;
+        std::vector<float> in(static_cast<size_t>(5 * sr));
         for (size_t i = 0; i < in.size(); ++i) in[i] = 0.4f * static_cast<float>(std::sin(2.0 * M_PI * 441.0 * i / sr));
         const auto y = passaEffetto(e, in, [&](size_t i) {
-            e.acceso = i >= static_cast<size_t>(0.5 * sr) && i < static_cast<size_t>(3.5 * sr);
-            e.param1[kRoll] = i < static_cast<size_t>(2 * sr) ? 0.3f : 0.9f;
+            const double t = static_cast<double>(i) / sr;
+            e.acceso[kRoll] = t >= 0.5 && t < 4.5;
+            e.scelta[kRoll] = t < 2.0 ? 0 : t < 3.0 ? 4 : 1;
+            e.param1[kRoll] = static_cast<float>(std::clamp(1.0 - (t - 0.5) / 4.0, 0.0, 1.0));  // da +12 a −12
         });
         float salto = 0.0f;
         for (size_t i = 1; i < y.size(); ++i) salto = std::max(salto, std::fabs(y[i] - y[i - 1]));
-        verifica(tuttiFiniti(y) && salto < 0.05f, "roll: niente click al giro né cambiando lunghezza");
+        // un 441 Hz a 0,4 cambia al massimo di 0,023 per campione; a +12 il doppio
+        verifica(tuttiFiniti(y) && salto < 0.08f, "roll: niente click (corto, tono che cambia, lunghezza che cambia)");
+    }
+    {  // Sul rumore (suono "vero", non un tono puro) le dissolvenze a potenza costante non fanno buchi di volume
+        Effetto e;
+        e.prepara(sr);
+        e.secondiBattito = 0.47f;
+        e.dryWet[kRoll] = 1.0f;
+        e.scelta[kRoll] = 0;
+        e.param1[kRoll] = 0.8f;
+        const auto in = rumore(3.0, 5);
+        const auto y = passaEffetto(e, in, [&](size_t i) { e.acceso[kRoll] = i >= static_cast<size_t>(0.5 * sr); });
+        auto rms = [&](const std::vector<float>& v, double da, double a) {
+            double q = 0.0;
+            const auto i0 = static_cast<size_t>(da * sr), i1 = static_cast<size_t>(a * sr);
+            for (size_t i = i0; i < i1; ++i) q += v[i] * v[i];
+            return std::sqrt(q / static_cast<double>(i1 - i0));
+        };
+        const double riferimento = rms(in, 0.5, 2.9);
+        double minimo = 1.0;
+        for (double t = 0.7; t < 2.9; t += 0.004) minimo = std::min(minimo, rms(y, t, t + 0.004) / riferimento);
+        char testo[80];
+        std::snprintf(testo, sizeof testo, "roll: niente buchi di volume ai giri (minimo %.0f%%)", 100.0 * minimo);
+        verifica(tuttiFiniti(y) && minimo > 0.5, testo);
+    }
+    {  // Più effetti insieme, ognuno col suo interruttore: roll + echo, poi l'echo continua da solo
+        Effetto e;
+        e.prepara(sr);
+        e.secondiBattito = 0.5f;
+        e.dryWet[kRoll] = 1.0f;
+        e.dryWet[kEcho] = 1.0f;
+        e.acceso[kRoll] = true;
+        e.acceso[kEcho] = true;
+        std::vector<float> in(static_cast<size_t>(3 * sr), 0.0f);
+        for (size_t i = 0; i < static_cast<size_t>(1.2 * sr); ++i) in[i] = 0.4f * static_cast<float>(std::sin(2.0 * M_PI * 300.0 * i / sr));
+        const auto y = passaEffetto(e, in, [&](size_t i) { if (i >= static_cast<size_t>(1.5 * sr)) e.acceso[kRoll] = false; });
+        // il deck tace da 1,2 s: il roll (fino a 1,5 s) suona ancora, poi resta l'eco
+        verifica(tuttiFiniti(y) && piccoTra(y, 1.3, 1.45, sr) > 0.2f, "effetti insieme: il roll ripete anche col deck muto");
+        verifica(piccoTra(y, 1.6, 2.0, sr) > 0.05f, "effetti insieme: spento il roll, l'echo continua per conto suo");
     }
 }
 
