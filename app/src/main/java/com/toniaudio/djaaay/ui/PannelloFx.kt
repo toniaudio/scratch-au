@@ -219,7 +219,7 @@ private fun TrackpadFx(app: StatoApp, d: Int, c: Controllore, modifier: Modifier
         } else if (!fx.acceso && grande) {
             Text(
                 "tocca e muovi · secondo dito = HOLD",
-                color = Colori.Scuro, fontSize = 10.sp, modifier = Modifier.align(Alignment.Center),
+                color = Colori.Scuro, fontSize = 10.sp, modifier = Modifier.align(Alignment.BottomStart).padding(6.dp),
             )
         }
     }

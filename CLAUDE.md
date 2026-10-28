@@ -124,6 +124,14 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
   `IngressoDvs` (InputPreset::Unprocessed, stessa frequenza dell'uscita). Deck con `dvs` acceso: velocità dal
   vinile; in assoluta salta alla posizione quando la puntina viene appoggiata (o se salta, senza protezione).
   Provato SOLO con segnale sintetico (round-trip dei formati): da verificare con scheda e vinili veri.
+- **Layout telefono + trackpad FX** (28/10): con altezza < 500 dp (telefono in orizzontale) sotto le waveform
+  (100 dp) c'è una vista alla volta, `StatoApp.vista`: DECK (dischi, trasporto 44 dp, pad 38 dp; al centro filtri,
+  volumi, crossfader), MIXER, PAD (hot cue e loop grandi), FX. Misure in `LocalMisure` (Tema.kt). Su tablet il layout
+  di prima. Bozze in `design/telefono.html`. Unità FX: il tasto ON è diventato **PAD** (apre il trackpad al posto
+  delle manopole); l'effetto si accende dai pad FX del deck. Trackpad: X = dry/wet, Y = parametro principale
+  (`DescrizioneFx.asseY`: echo/dub feedback, reverb stanza, stretch tono); dito giù = suona, su = svanisce (code;
+  stretch in dissolvenza ~0,5 s); secondo dito = HOLD, il tocco dopo lo fa svanire; se era già acceso dal pad del
+  deck il trackpad lo modula soltanto.
 - Prossimo: prova vera dell'utente (MIDI con l'X-Session, DVS con scheda USB), poi pre-ascolto in cuffia
   (scheda multicanale), playlist, keylock durante il DVS (ora spento in DVS).
 
