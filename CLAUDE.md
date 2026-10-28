@@ -132,6 +132,8 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
   (`DescrizioneFx.asseY`: echo/dub feedback, reverb stanza, stretch tono); dito giù = suona, su = svanisce (code;
   stretch in dissolvenza ~0,5 s); secondo dito = HOLD, il tocco dopo lo fa svanire; se era già acceso dal pad del
   deck il trackpad lo modula soltanto.
+- iOS valutato (28/10): fattibile (motore C++ riusabile, UI con Compose Multiplatform), ma con Apple ID gratuito la
+  firma scade ogni 7 giorni (o 99 €/anno). L'utente ha deciso: **per ora resta solo Android**.
 - Prossimo: prova vera dell'utente (MIDI con l'X-Session, DVS con scheda USB), poi pre-ascolto in cuffia
   (scheda multicanale), playlist, keylock durante il DVS (ora spento in DVS).
 
