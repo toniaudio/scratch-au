@@ -129,6 +129,24 @@ class Controllore(
         ponte.comando(d, Cmd.PLAY_PAUSA)
     }
 
+    /** App chiusa: i deck si fermano (il brano resta caricato), il campionatore tace, gli effetti si spengono. */
+    fun chiusura() {
+        for (d in 0..1) {
+            ponte.comando(d, Cmd.PLAY, 0.0)
+            for (t in EFFETTI.indices) if (stato.deck[d].fx.accesi[t]) fxAcceso(d, false, t)
+        }
+        fermaCampionatore()
+        // il servizio che si ferma chiude l'uscita (anche a 4 canali) e l'ingresso del DVS
+        stato.cuffieAttive = false
+        stato.dvs.aperto = false
+    }
+
+    /** App riaperta (col processo ancora vivo): pre-ascolto e ingresso del DVS si riaprono se erano in uso. */
+    fun riapertura() {
+        if (stato.opzioni.cuffie && !stato.cuffieAttive) attivaCuffie(true, silenzioso = true)
+        if (!stato.dvs.aperto && stato.deck.any { it.dvs }) apriIngressoDvs()
+    }
+
     fun cueGiu(d: Int) = ponte.comando(d, Cmd.CUE_GIU)
     fun cueSu(d: Int) = ponte.comando(d, Cmd.CUE_SU)
 

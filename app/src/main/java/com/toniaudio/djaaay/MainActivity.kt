@@ -21,7 +21,6 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.lifecycle.lifecycleScope
 import com.toniaudio.djaaay.ui.SchermataDJ
 
 class MainActivity : ComponentActivity() {
@@ -42,10 +41,13 @@ class MainActivity : ComponentActivity() {
         override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>) = controllore.dvsAggiornaSchede()
     }
 
-    private val stato = StatoApp()
-    private lateinit var piattaforma: PiattaformaAndroid
+    private lateinit var stato: StatoApp
     private lateinit var controllore: Controllore
     private var midi: MidiUsb? = null
+
+    /** Per la piattaforma (vedi Sessione): i permessi si chiedono dalla schermata aperta. */
+    fun chiediMusica(permesso: String) = chiediMusica.launch(permesso)
+    fun chiediIngressoAudio() = chiediAudio.launch(Manifest.permission.RECORD_AUDIO)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,12 +68,11 @@ class MainActivity : ComponentActivity() {
         val audioOk = Motore.avvia()
         ContextCompat.startForegroundService(this, Intent(this, ServizioAudio::class.java))
 
-        piattaforma = PiattaformaAndroid(
-            this,
-            chiediPermesso = { chiediMusica.launch(piattaforma.permessoDaChiedere()) },
-            chiediPermessoAudio = { chiediAudio.launch(Manifest.permission.RECORD_AUDIO) },
-        )
-        controllore = Controllore(stato, PonteNativo, piattaforma, lifecycleScope)
+        // stato e controllore vivono quanto il motore (il processo): riaprendo l'app si ritrova com'era
+        val (s, c, nuova) = Sessione.prendi(this)
+        stato = s
+        controllore = c
+        if (!nuova) controllore.riapertura()
         Motore.impostaBuffer(stato.opzioni.buffer)
         if (!audioOk) controllore.mostra("Audio non disponibile: riavvia l'app")
         controllore.aggiornaLibreria()
@@ -90,8 +91,13 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         midi?.ferma()
         getSystemService(AudioManager::class.java).unregisterAudioDeviceCallback(schedeAudio)
-        // Chiusura vera dell'app (non una rotazione): si ferma il servizio, che spegne audio e registrazione
-        if (isFinishing) stopService(Intent(this, ServizioAudio::class.java))
+        // Chiusura vera dell'app (non una rotazione): deck e campionatore si fermano, effetti spenti (riaprendo non
+        // riparte niente da solo); si ferma il servizio, che spegne audio e registrazione
+        if (isFinishing) {
+            controllore.chiusura()
+            stopService(Intent(this, ServizioAudio::class.java))
+        }
+        Sessione.lascia(this)
         super.onDestroy()
     }
 }

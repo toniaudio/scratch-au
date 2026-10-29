@@ -180,6 +180,11 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
 
 ## Da ricordare (scelte tecniche)
 
+- **`Sessione`** (object, vive quanto il processo come il motore nativo) tiene StatoApp, Controllore e piattaforma:
+  riaprendo l'app la schermata ritrova i brani caricati (prima ripartiva vuota e i dischi muovevano brani
+  "invisibili" rimasti nel motore). Chiudendo (isFinishing) `Controllore.chiusura()` ferma deck/campionatore/FX;
+  riaprendo `riapertura()` riapre pre-ascolto e ingresso DVS. Permessi chiesti alla MainActivity aperta (WeakReference).
+
 - Il thread dell'interfaccia deve chiamare `Deck::raccogliTracceVecchie()` (es. a ogni frame): libera i brani sostituiti.
 - Quando si collega il motore vero al JNI, `Motore::prepara()` va chiamato solo con il flusso fermo (apri/riapri).
 - Chiudere Oboe tenendo il mutex mentre arriva un `onErrorAfterClose` potrebbe in teoria bloccarsi: caso rarissimo
