@@ -64,16 +64,14 @@ private fun Corpo(app: StatoApp, c: Controllore, telefono: Boolean) {
     Box(Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             BarraAlta(app, c)
-            Box(Modifier.fillMaxWidth().height(if (telefono) 100.dp else 132.dp)) {
+            Box(Modifier.fillMaxWidth().height(if (telefono) 108.dp else 140.dp)) {
                 Column(Modifier.fillMaxSize()) {
                     // One Deck: solo la waveform del deck A, alta il doppio
                     for (d in if (app.opzioni.unDeck) 0..0 else 0..1) {
                         WaveformDeck(
-                            app.deck[d], app.zoomSecondi, app.opzioni.scratchWaveform,
+                            app.deck[d], app.zoomSecondi,
                             onZoom = { app.zoomSecondi = it },
-                            onToccoInizio = { c.toccoInizio(d) },
-                            onToccoSposta = { c.toccoSposta(d, it) },
-                            onToccoFine = { c.toccoFine(d) },
+                            onVai = { c.vai(d, it) },
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                         )
                     }

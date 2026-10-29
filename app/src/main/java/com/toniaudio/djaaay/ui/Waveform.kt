@@ -3,7 +3,6 @@ package com.toniaudio.djaaay.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -16,6 +15,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.unit.dp
 import com.toniaudio.djaaay.LUNGHEZZE_LOOP
 import com.toniaudio.djaaay.StatoDeck
@@ -23,62 +23,52 @@ import kotlin.math.ceil
 import kotlin.math.max
 
 /**
- * Waveform di un deck che scorre sotto la puntina (al centro, disegnata da chi la contiene).
- * Un dito trascina il brano (scratch, se attivo nelle opzioni); due dita = zoom.
+ * Waveform di un deck che scorre sotto la puntina (al centro, disegnata da chi la contiene). La waveform non comanda
+ * il brano (lo scratch si fa solo sul disco): due dita = zoom. Sotto, la panoramica di tutto il brano: un tocco porta
+ * il deck in quel punto (inizio, metà…), trascinando il brano segue il dito.
  */
 @Composable
 fun WaveformDeck(
     deck: StatoDeck,
     zoomSecondi: Float,
-    scratchAttivo: Boolean,
     onZoom: (Float) -> Unit,
-    onToccoInizio: () -> Unit,
-    onToccoSposta: (Double) -> Unit,
-    onToccoFine: () -> Unit,
+    onVai: (Double) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val zoom by rememberUpdatedState(zoomSecondi)
-    val scratch by rememberUpdatedState(scratchAttivo && deck.brano != null)
-    val inizio by rememberUpdatedState(onToccoInizio)
-    val sposta by rememberUpdatedState(onToccoSposta)
-    val fine by rememberUpdatedState(onToccoFine)
     val cambiaZoom by rememberUpdatedState(onZoom)
+    val vai by rememberUpdatedState(onVai)
+    val durata by rememberUpdatedState(if (deck.brano != null) deck.durata else 0.0)
+    val telefono = LocalMisure.current.telefono
+    val altaPanoramica = if (telefono) 14.dp else 16.dp
 
     Canvas(
         modifier.pointerInput(Unit) {
             awaitEachGesture {
-                awaitFirstDown(requireUnconsumed = false)
-                var scratchando = false
-                var spostamento = 0.0
-                if (scratch) {
-                    inizio()
-                    scratchando = true
+                val giu = awaitFirstDown(requireUnconsumed = false)
+                // la zona da toccare è un po' più alta della striscia disegnata: si prende bene col dito
+                val zonaPanoramica = size.height - (altaPanoramica + 6.dp).toPx()
+                val salta = giu.position.y >= zonaPanoramica && durata > 0.0
+                fun puntoDi(x: Float) = (x / size.width).coerceIn(0f, 1f) * durata
+                if (salta) {
+                    vai(puntoDi(giu.position.x))
+                    giu.consume()
                 }
                 do {
                     val e = awaitPointerEvent()
-                    val premuti = e.changes.count { it.pressed }
-                    if (premuti >= 2) {
-                        if (scratchando) {
-                            fine()
-                            scratchando = false
-                        }
+                    if (salta) {
+                        val p = e.changes.firstOrNull { it.id == giu.id }
+                        if (p != null && p.pressed && p.positionChanged()) vai(puntoDi(p.position.x))
+                    } else if (e.changes.count { it.pressed } >= 2) {
                         val z = e.calculateZoom()
                         if (z != 1f) cambiaZoom((zoom / z).coerceIn(1.5f, 60f))
-                    } else if (scratchando) {
-                        val dx = e.calculatePan().x
-                        if (dx != 0f) {
-                            // trascinare verso sinistra porta avanti il brano
-                            spostamento -= dx / (size.width / zoom)
-                            sposta(spostamento)
-                        }
                     }
                     e.changes.forEach { it.consume() }
                 } while (e.changes.any { it.pressed })
-                if (scratchando) fine()
             }
         },
     ) {
-        val panoramica = 6.dp.toPx()
+        val panoramica = altaPanoramica.toPx()
         val altezza = size.height - panoramica
         drawRect(Colori.Sfondo)
         val wf = deck.waveform

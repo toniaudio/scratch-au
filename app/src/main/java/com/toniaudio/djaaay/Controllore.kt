@@ -1066,7 +1066,8 @@ class Controllore(
         val o = stato.opzioni
         piattaforma.salvaPreferenza(
             "opzioni",
-            listOf(o.frizione, o.avvio, o.frenata, o.sensibilita, if (o.scratchWaveform) 1f else 0f, o.escursione.toFloat(),
+            // il quinto valore era "scratch sulla waveform" (tolto): resta il posto, così le opzioni salvate si rileggono
+            listOf(o.frizione, o.avvio, o.frenata, o.sensibilita, 0f, o.escursione.toFloat(),
                 o.buffer.toFloat(), stato.mixer.curva.toFloat(), if (stato.mixer.inverti) 1f else 0f,
                 if (o.unDeck) 1f else 0f, if (o.cuffie) 1f else 0f).joinToString(","),
         )
@@ -1080,7 +1081,6 @@ class Controllore(
         o.avvio = v[1]
         o.frenata = v[2]
         o.sensibilita = v[3]
-        o.scratchWaveform = v[4] > 0.5f
         o.escursione = v[5].toInt()
         o.buffer = v[6].toInt()
         stato.mixer.curva = v[7].toInt()

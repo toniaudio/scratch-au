@@ -34,7 +34,8 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
 - In alto: per deck pulsante **libreria** all'estremità (A a sinistra, B a destra), titolo, artista, BPM, tempo mancante.
   Al centro il nome **DVS**: toccandolo si aprono le **Opzioni** (nessun pulsante ingranaggio).
 - **Waveform alte** (2 strisce, A sopra B), puntina fissa al centro, griglia battute, bandierine hot cue,
-  panoramica traccia sotto; pinch = zoom, trascinare = scratch (disattivabile).
+  panoramica traccia sotto, **toccabile** (29/10: tocco = vai lì, trascinare = il brano segue il dito; striscia 14 dp,
+  zona di tocco +6 dp); pinch = zoom. La waveform NON comanda il brano: lo scratch solo sul disco.
 - **LOOP** (tab dei pad): selettore **◀ [ N ] ▶** (solo il numero, niente scritta "battute"); le frecce dimezzano/raddoppiano 1/8…32 battute, il tasto centrale
   accende/spegne il loop da dove si è (allineato alla battuta); cambiare N con loop acceso lo accorcia/allunga subito.
   Loop acceso = tasto verde; sulla waveform la zona del loop è velata di verde con i bordi.
@@ -59,7 +60,7 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
   senza coprire il mixer). Ricerca, tab Tutti / Cartelle / Playlist / Recenti, BPM e durata; tocco su un brano = caricato
   in quel deck. Il brano già caricato è in grigio.
 - **Opzioni** (si aprono toccando DVS) a schede:
-  - *Generale*: frizione slipmat, avvio, frenata, sensibilità piatto, scratch su waveform, escursione pitch ±8/16/50,
+  - *Generale*: frizione slipmat, avvio, frenata, sensibilità piatto, escursione pitch ±8/16/50,
     curva e inverti crossfader, uscita audio, pre-ascolto (scheda USB).
   - *MIDI*: controller collegato, preset di mappatura per controller (X-Session Pro predefinito + personali), LEARN,
     elenco assegnazioni con ✕, azzera. **Tutti i comandi principali sono assegnabili**: crossfader e curva, volumi, gain,

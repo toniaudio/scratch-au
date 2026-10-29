@@ -195,7 +195,6 @@ class Opzioni {
     var avvio by mutableFloatStateOf(0.15f)
     var frenata by mutableFloatStateOf(0.40f)
     var sensibilita by mutableFloatStateOf(1.0f)  // 1 = un giro di dito = un giro di vinile a 33⅓
-    var scratchWaveform by mutableStateOf(true)
     var escursione by mutableIntStateOf(8)  // pitch ±8, ±16, ±50 %
     var buffer by mutableIntStateOf(2)
     var unDeck by mutableStateOf(false)   // One Deck: deck A + campionatore al posto del deck B

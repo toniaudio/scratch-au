@@ -107,7 +107,6 @@ private fun SchedaGenerale(app: StatoApp, c: Controllore) {
             RigaCursore("Sensibilità piatto", "audio per giro di dito", (o.sensibilita - 0.25f) / 1.75f, "×%.2f".format(o.sensibilita)) {
                 o.sensibilita = 0.25f + it * 1.75f
             }
-            RigaInterruttore("Scratch sulla waveform", o.scratchWaveform) { o.scratchWaveform = it }
             Titolo("PITCH")
             RigaScelta("Escursione", listOf("±8%", "±16%", "±50%"), listOf(8, 16, 50).indexOf(o.escursione)) {
                 c.escursione(listOf(8, 16, 50)[it])
