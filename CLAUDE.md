@@ -35,7 +35,7 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
   Al centro il nome **DVS**: toccandolo si aprono le **Opzioni** (nessun pulsante ingranaggio).
 - **Waveform alte** (2 strisce, A sopra B), puntina fissa al centro, griglia battute, bandierine hot cue,
   panoramica traccia sotto, **toccabile** (29/10: tocco = vai lì, trascinare = il brano segue il dito; striscia 14 dp,
-  zona di tocco +6 dp); pinch = zoom. La waveform NON comanda il brano: lo scratch solo sul disco.
+  zona di tocco +6 dp; **in play il dito va tenuto 2 s** prima del salto, con segno e barretta d'attesa); pinch = zoom. La waveform NON comanda il brano: lo scratch solo sul disco.
 - **LOOP** (tab dei pad): selettore **◀ [ N ] ▶** (solo il numero, niente scritta "battute"); le frecce dimezzano/raddoppiano 1/8…32 battute, il tasto centrale
   accende/spegne il loop da dove si è (allineato alla battuta); cambiare N con loop acceso lo accorcia/allunga subito.
   Loop acceso = tasto verde; sulla waveform la zona del loop è velata di verde con i bordi.

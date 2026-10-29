@@ -1,11 +1,15 @@
 package com.toniaudio.djaaay.ui
 
+import android.os.SystemClock
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -22,10 +26,14 @@ import com.toniaudio.djaaay.StatoDeck
 import kotlin.math.ceil
 import kotlin.math.max
 
+/** Col brano in play, quanto tenere il dito sulla panoramica prima del salto. */
+private const val kAttesaSalto = 2000L
+
 /**
  * Waveform di un deck che scorre sotto la puntina (al centro, disegnata da chi la contiene). La waveform non comanda
  * il brano (lo scratch si fa solo sul disco): due dita = zoom. Sotto, la panoramica di tutto il brano: un tocco porta
- * il deck in quel punto (inizio, metà…), trascinando il brano segue il dito.
+ * il deck in quel punto (inizio, metà…), trascinando il brano segue il dito. Col brano in play il dito va tenuto
+ * fermo 2 secondi prima del salto (un tocco per sbaglio durante il set non fa niente): intanto si vede l'attesa.
  */
 @Composable
 fun WaveformDeck(
@@ -39,6 +47,9 @@ fun WaveformDeck(
     val cambiaZoom by rememberUpdatedState(onZoom)
     val vai by rememberUpdatedState(onVai)
     val durata by rememberUpdatedState(if (deck.brano != null) deck.durata else 0.0)
+    val inPlay by rememberUpdatedState(deck.inPlay)
+    // attesa prima del salto (in play): dove è il dito (0…1 della larghezza) e quanto manca (0…1); null = niente
+    var attesa by remember { mutableStateOf<Pair<Float, Float>?>(null) }
     val telefono = LocalMisure.current.telefono
     val altaPanoramica = if (telefono) 14.dp else 16.dp
 
@@ -50,13 +61,43 @@ fun WaveformDeck(
                 val zonaPanoramica = size.height - (altaPanoramica + 6.dp).toPx()
                 val salta = giu.position.y >= zonaPanoramica && durata > 0.0
                 fun puntoDi(x: Float) = (x / size.width).coerceIn(0f, 1f) * durata
-                if (salta) {
+                var attivo = salta  // dito sulla panoramica e salto concesso
+                if (salta && inPlay) {
+                    // in play: il dito deve restare giù 2 s (può spostarsi: si salta dove si trova alla fine)
+                    giu.consume()
+                    val inizio = SystemClock.uptimeMillis()
+                    var x = giu.position.x
+                    var dentro = true
+                    try {
+                        while (true) {
+                            val trascorsi = SystemClock.uptimeMillis() - inizio
+                            attesa = (x / size.width).coerceIn(0f, 1f) to (trascorsi / kAttesaSalto.toFloat()).coerceIn(0f, 1f)
+                            if (trascorsi >= kAttesaSalto) {
+                                vai(puntoDi(x))
+                                break
+                            }
+                            // un'occhiata al dito ogni fotogramma (anche se è fermo l'attesa deve avanzare)
+                            val e = withTimeoutOrNull(16L) { awaitPointerEvent() } ?: continue
+                            val p = e.changes.firstOrNull { it.id == giu.id }
+                            e.changes.forEach { it.consume() }
+                            if (p == null || !p.pressed) {
+                                dentro = false  // alzato prima dei 2 s: niente salto
+                                break
+                            }
+                            x = p.position.x
+                        }
+                    } finally {
+                        attesa = null
+                    }
+                    attivo = dentro
+                    if (!dentro) return@awaitEachGesture
+                } else if (salta) {
                     vai(puntoDi(giu.position.x))
                     giu.consume()
                 }
                 do {
                     val e = awaitPointerEvent()
-                    if (salta) {
+                    if (attivo) {
                         val p = e.changes.firstOrNull { it.id == giu.id }
                         if (p != null && p.pressed && p.positionChanged()) vai(puntoDi(p.position.x))
                     } else if (e.changes.count { it.pressed } >= 2) {
@@ -87,6 +128,16 @@ fun WaveformDeck(
         // la parte già suonata è più scura
         drawRect(Colori.Sfondo.copy(alpha = 0.4f), size = Size(size.width / 2, altezza))
         disegnaPanoramica(deck, wf, altezza, panoramica)
+        attesa?.let { (x, p) ->
+            // attesa del salto: segno dove andrà il brano e una barretta che si riempie in 2 s
+            val px = x * size.width
+            drawRect(Color.White.copy(alpha = 0.5f + 0.5f * p), Offset(px - 1.dp.toPx(), altezza), Size(2.dp.toPx(), panoramica))
+            val largo = 44.dp.toPx()
+            val sx = (px - largo / 2).coerceIn(0f, size.width - largo)
+            val sy = altezza - 5.dp.toPx()
+            drawRect(Color.Black.copy(alpha = 0.6f), Offset(sx, sy), Size(largo, 3.dp.toPx()))
+            drawRect(Color.White, Offset(sx, sy), Size(largo * p, 3.dp.toPx()))
+        }
         if (caricamento != null) {
             drawRect(Colori.deck(deck.indice).copy(alpha = 0.7f), Offset(0f, size.height - 1.5.dp.toPx()), Size(size.width * caricamento, 1.5.dp.toPx()))
         }
