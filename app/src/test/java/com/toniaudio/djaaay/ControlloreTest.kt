@@ -72,6 +72,33 @@ class ControlloreTest {
     }
 
     @Test
+    fun loopSullaGrigliaVariabileDallaBattutaPiuVicina() {
+        carica(0, 110.0, 0.3)
+        val deck = stato.deck[0]
+        // brano che rallenta: ogni battuta 10 ms più lunga della precedente
+        val b = DoubleArray(60)
+        b[0] = 0.3
+        for (k in 1 until b.size) b[k] = b[k - 1] + 0.5 + 0.01 * k
+        deck.battiti = b
+        assertEquals(12.5, deck.battutaA(deck.tempoDellaBattuta(12.5)), 1e-9)
+        assertEquals(b[21] - b[20], deck.battitoA(b[20] + 0.1), 1e-9)
+        // premuto un attimo prima della battuta 20: il loop parte da lì e dura 4 battute vere
+        deck.posizione = b[20] - 0.03
+        c.loopTocco(0)
+        assertEquals(b[20], ponte.comandi.last().a, 1e-9)
+        assertEquals(b[24], ponte.comandi.last().b, 1e-9)
+        c.loopLunghezza(0, -1)
+        assertEquals(b[22], ponte.comandi.last().b, 1e-9)
+        // mezza battuta: si aggancia alla mezza più vicina
+        c.loopTocco(0)
+        repeat(2) { c.loopLunghezza(0, -1) }  // 2 → 1 → 1/2
+        deck.posizione = b[30] + 0.55 * (b[31] - b[30])
+        c.loopTocco(0)
+        assertEquals((b[30] + b[31]) / 2, ponte.comandi.last().a, 1e-9)
+        assertEquals(b[31], ponte.comandi.last().b, 1e-9)
+    }
+
+    @Test
     fun hotCuePrimaFissaPoiSalta() {
         carica(0, 120.0, 0.0)
         stato.deck[0].posizione = 42.0

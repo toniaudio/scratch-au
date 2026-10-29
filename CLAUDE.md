@@ -37,7 +37,8 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
   panoramica traccia sotto, **toccabile** (29/10: tocco = vai lì, trascinare = il brano segue il dito; striscia 14 dp,
   zona di tocco +6 dp; **in play il dito va tenuto 2 s** prima del salto, con segno e barretta d'attesa); pinch = zoom. La waveform NON comanda il brano: lo scratch solo sul disco.
 - **LOOP** (tab dei pad): selettore **◀ [ N ] ▶** (solo il numero, niente scritta "battute"); le frecce dimezzano/raddoppiano 1/8…32 battute, il tasto centrale
-  accende/spegne il loop da dove si è (allineato alla battuta); cambiare N con loop acceso lo accorcia/allunga subito.
+  accende/spegne il loop dalla **battuta più vicina** (i loop < 1 battuta dalla loro suddivisione più vicina), lunghezza
+  contata sulla griglia (anche variabile); cambiare N con loop acceso lo accorcia/allunga subito.
   Loop acceso = tasto verde; sulla waveform la zona del loop è velata di verde con i bordi.
 - Deck: disco touch (scratch), CUE / Play / SYNC, pad con tab HOT CUE · LOOP · FX; pitch verticale con valore
   e tasto **DVS** (l'escursione ±8/16/50 si sceglie solo nelle Opzioni). Tasto **KEY** (keylock) in alto a sinistra del disco A e in alto a destra del disco B:
@@ -164,6 +165,14 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
     ogni salto è una dissolvenza a potenza costante tra voci (fino a 3 che sfumano, mai uno stacco).
   - Roll "sgranato dopo un po'": la registrazione (10 s) sovrascriveva il pezzo; ora si ferma mentre il roll suona
     (test: roll tenuto 25 s). 4 trackpad per deck. Crossfader taglio netto (`kFondoTaglio`).
+  - **Griglia variabile** (loop imprecisi sui brani lunghi a BPM variabile): `trovaBattute` (Analisi.cpp) =
+    programmazione dinamica alla Ellis sugli attacchi (rigidità 100, intervalli 0,7–1,3 periodi), battute
+    "ritmiche" come ancore (colpo forte anche nelle vicine), nei break ridistribuite uguali, parabola ai minimi
+    quadrati su ±8 battute. Se ≥ 8 battute ritmiche di fila stanno a > 20 ms dalla griglia fissa → `Tempo::battiti`
+    (file di analisi v3, i vecchi si rifanno da soli). Errore medio ~0,5 ms, peggiore < 2 ms (test 100→108 BPM e
+    variazioni ±15%). App: `StatoDeck.battiti`, `battutaA`/`tempoDellaBattuta`/`battitoA`; loop, SYNC, BPM mostrato
+    (`bpmQui`), tempo degli FX e righe della griglia usano la griglia vera. `SenzaDenormali` (FTZ) nell'analisi e
+    in `Motore::render`: nei silenzi l'analisi era 8× più lenta su x86.
 - iOS valutato (28/10): fattibile (motore C++ riusabile, UI con Compose Multiplatform), ma con Apple ID gratuito la
   firma scade ogni 7 giorni (o 99 €/anno). L'utente ha deciso: **per ora resta solo Android**.
 - Prossimo: prova vera dell'utente (MIDI con l'X-Session, DVS con scheda USB), poi pre-ascolto in cuffia

@@ -25,10 +25,13 @@ struct Waveform {
 Waveform analizzaWaveform(const Traccia& t);
 
 // Tempo del brano: BPM e istante della prima battuta (in secondi). bpm = 0 se non si riesce a stimarlo
-// (es. brano senza ritmo). Le battute successive cadono a primoBattito + k · 60 / bpm.
+// (es. brano senza ritmo). Se il tempo è costante le battute cadono a primoBattito + k · 60 / bpm e `battiti` è
+// vuoto; se il brano rallenta o accelera (batterista vero, dischi vecchi…) `battiti` ha l'istante di ogni battuta
+// vera, dall'inizio alla fine (bpm = quello medio, primoBattito = battiti[0]).
 struct Tempo {
     double bpm = 0.0;
     double primoBattito = 0.0;
+    std::vector<double> battiti;
 };
 
 Tempo analizzaTempo(const Traccia& t);

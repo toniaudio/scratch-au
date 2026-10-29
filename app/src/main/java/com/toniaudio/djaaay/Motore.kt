@@ -32,6 +32,8 @@ object Motore {
     external fun concludi(handle: Long, cache: String?): DoubleArray
     /** [bpm, prima battuta, frequenza del brano]; bpm 0 = non ancora noto. */
     external fun tempo(handle: Long): DoubleArray
+    /** Istanti delle battute (s) se il tempo del brano cambia; vuoto = griglia fissa (bpm e prima battuta). */
+    external fun battiti(handle: Long): DoubleArray
     /** Per livello di zoom: [bassi…, medi…, alti…], colonne di 64·2^livello frame del brano (fin dove è arrivata). */
     external fun waveform(handle: Long): Array<ByteArray>
     external fun caricaNelDeck(handle: Long, deck: Int)

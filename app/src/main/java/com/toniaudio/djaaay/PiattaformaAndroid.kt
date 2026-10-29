@@ -142,7 +142,7 @@ class PiattaformaAndroid(
                             val wf = Waveform(Motore.waveform(h).toList(), tempo[2].toInt())
                             val progresso = if (durataPrevista > 0) (secondi / durataPrevista).toFloat().coerceIn(0f, 0.99f) else 0f
                             withContext(Dispatchers.Main) {
-                                aggiorna(BranoCaricato(h, tempo[0], tempo[1], maxOf(durataPrevista, secondi), wf, progresso, false))
+                                aggiorna(BranoCaricato(h, tempo[0], tempo[1], maxOf(durataPrevista, secondi), wf, progresso, false, griglia(h)))
                             }
                         }
                         delay(15)
@@ -150,7 +150,8 @@ class PiattaformaAndroid(
                     // fine: analisi completata (e salvata), durata vera
                     val r = Motore.concludi(h, cache)
                     val wf = Waveform(Motore.waveform(h).toList(), Motore.tempo(h)[2].toInt())
-                    withContext(Dispatchers.Main) { aggiorna(BranoCaricato(h, r[0], r[1], r[2], wf, 1f, true)) }
+                    val battiti = griglia(h)
+                    withContext(Dispatchers.Main) { aggiorna(BranoCaricato(h, r[0], r[1], r[2], wf, 1f, true, battiti)) }
                 }
 
                 val info = MediaCodec.BufferInfo()
@@ -210,6 +211,9 @@ class PiattaformaAndroid(
             estrattore.release()
         }
     }
+
+    /** Griglia variabile del brano (null = tempo costante). */
+    private fun griglia(h: Long): DoubleArray? = Motore.battiti(h).takeIf { it.size >= 2 }
 
     override fun mettiNelDeck(caricato: BranoCaricato, deck: Int) = Motore.caricaNelDeck(caricato.handle, deck)
 

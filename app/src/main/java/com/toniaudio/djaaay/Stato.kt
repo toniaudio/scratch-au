@@ -118,6 +118,8 @@ class StatoDeck(val indice: Int) {
     var waveform by mutableStateOf<Waveform?>(null)
     var bpm by mutableDoubleStateOf(0.0)
     var primoBattito by mutableDoubleStateOf(0.0)
+    /** Griglia variabile: l'istante di ogni battuta (brani col tempo che cambia); null = griglia fissa da bpm. */
+    var battiti by mutableStateOf<DoubleArray?>(null)
     var caricamento by mutableStateOf<Float?>(null)  // 0…1 mentre carica, null altrimenti
 
     // dal motore, a ogni fotogramma
@@ -135,6 +137,7 @@ class StatoDeck(val indice: Int) {
     val hotCue = mutableStateListOf<Double?>(null, null, null, null)
     var loopAttivo by mutableStateOf(false)
     var loopInizio by mutableDoubleStateOf(0.0)
+    var loopBattuta by mutableDoubleStateOf(0.0)  // battuta (della griglia) dove parte il loop
     var loopIndice by mutableIntStateOf(5)  // 4 battute
     var tabPad by mutableIntStateOf(0)  // 0 hot cue, 1 loop
     var libreriaAperta by mutableStateOf(false)
@@ -145,11 +148,49 @@ class StatoDeck(val indice: Int) {
     val fx = StatoFx()
     var dvs by mutableStateOf(false)  // il deck segue il vinile timecode
 
-    /** Durata di una battuta in secondi del brano (120 BPM se il tempo non è noto). */
-    val battitoSecondi: Double get() = 60.0 / (if (bpm > 0) bpm else 120.0)
+    // ------------------------------------------------------------------ griglia delle battute
+    // Battuta "frazionaria": 0 = prima battuta, 1 = la seconda, 1,5 = a metà tra seconda e terza. Con la griglia
+    // fissa è lineare nel tempo; con quella variabile segue le battute vere (tra due battute in proporzione).
+
+    private val periodoFisso: Double get() = 60.0 / (if (bpm > 0) bpm else 120.0)
+
+    /** In che battuta (frazionaria) cade il tempo `t` del brano (secondi). */
+    fun battutaA(t: Double): Double {
+        val b = battiti ?: return (t - primoBattito) / periodoFisso
+        val n = b.size
+        if (t < b[0]) return (t - b[0]) / (b[1] - b[0])
+        if (t >= b[n - 1]) return (n - 1) + (t - b[n - 1]) / (b[n - 1] - b[n - 2])
+        var i = java.util.Arrays.binarySearch(b, t)
+        if (i < 0) i = -i - 2  // la battuta prima di t
+        return i + (t - b[i]) / (b[i + 1] - b[i])
+    }
+
+    /** Istante (secondi del brano) della battuta frazionaria `x`. */
+    fun tempoDellaBattuta(x: Double): Double {
+        val b = battiti ?: return primoBattito + x * periodoFisso
+        val n = b.size
+        if (x <= 0.0) return b[0] + x * (b[1] - b[0])
+        if (x >= n - 1) return b[n - 1] + (x - (n - 1)) * (b[n - 1] - b[n - 2])
+        val i = x.toInt()
+        return b[i] + (x - i) * (b[i + 1] - b[i])
+    }
+
+    /** Durata della battuta in corso alla posizione `t` (secondi del brano; 120 BPM se il tempo non è noto). */
+    fun battitoA(t: Double): Double {
+        if (battiti == null) return periodoFisso
+        val x = battutaA(t)
+        val i = kotlin.math.floor(x)
+        return tempoDellaBattuta(i + 1) - tempoDellaBattuta(i)
+    }
+
+    /** Durata di una battuta dove si trova la puntina (secondi del brano). */
+    val battitoSecondi: Double get() = battitoA(posizione)
+
+    /** BPM del brano dove si trova la puntina (cambia lungo i brani col tempo variabile). */
+    val bpmQui: Double get() = if (bpm > 0) 60.0 / battitoSecondi else 0.0
 
     /** BPM che si sentono davvero (con il pitch). */
-    val bpmEffettivi: Double get() = bpm * (1.0 + pitch)
+    val bpmEffettivi: Double get() = bpmQui * (1.0 + pitch)
 }
 
 /** I brani che la libreria del deck mostra adesso (scheda, cartella e ricerca); vuota per l'elenco delle cartelle. */

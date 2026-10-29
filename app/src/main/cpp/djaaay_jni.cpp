@@ -476,6 +476,15 @@ JNIEXPORT jdoubleArray JNICALL Java_com_toniaudio_djaaay_Motore_tempo(JNIEnv* en
     return r;
 }
 
+// Griglia variabile: l'istante di ogni battuta (s); vuota se il tempo è costante (o non ancora noto)
+JNIEXPORT jdoubleArray JNICALL Java_com_toniaudio_djaaay_Motore_battiti(JNIEnv* env, jobject, jlong h) {
+    if (h == 0) return nullptr;
+    const auto& b = caricamento(h)->tempo.battiti;
+    jdoubleArray r = env->NewDoubleArray(static_cast<jsize>(b.size()));
+    if (!b.empty()) env->SetDoubleArrayRegion(r, 0, static_cast<jsize>(b.size()), b.data());
+    return r;
+}
+
 // Livelli della waveform per l'interfaccia (fin dove è arrivata l'analisi): per livello [bassi…, medi…, alti…]
 // (colonne di 64·2^livello frame)
 JNIEXPORT jobjectArray JNICALL Java_com_toniaudio_djaaay_Motore_waveform(JNIEnv* env, jobject, jlong h) {

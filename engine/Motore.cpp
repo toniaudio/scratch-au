@@ -1,5 +1,7 @@
 #include "Motore.h"
 
+#include "SenzaDenormali.h"
+
 #include <algorithm>
 #include <cstddef>
 
@@ -38,6 +40,7 @@ void Motore::leggiTimecode(int n) {
 }
 
 void Motore::render(float* uscita, int frame, int canali) {
+    SenzaDenormali senza;  // code di riverbero/eco che si spengono: niente calcoli lentissimi
     const bool scheda = canali >= 4;
     while (frame > 0) {
         const int n = std::min(frame, kBlocco);

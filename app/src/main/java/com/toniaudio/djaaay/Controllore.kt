@@ -18,6 +18,7 @@ class BranoCaricato(
     val waveform: Waveform?,
     val progresso: Float = 1f,  // parte già decodificata
     val finito: Boolean = true,
+    val battiti: DoubleArray? = null,  // istanti delle battute se il tempo cambia (null = griglia fissa)
 )
 
 /** Le cose che dipendono da Android (in app: PiattaformaAndroid; nei test: una finta). */
@@ -143,7 +144,7 @@ class Controllore(
         val questo = stato.deck[d]
         val altro = stato.deck[1 - d]
         if (questo.bpm <= 0 || altro.bpm <= 0) return mostra("SYNC: serve il BPM di entrambi i brani")
-        val nuovoPitch = (altro.bpmEffettivi / questo.bpm - 1.0).toFloat()
+        val nuovoPitch = (altro.bpmEffettivi / questo.bpmQui - 1.0).toFloat()
         val limite = stato.opzioni.escursione / 100f
         if (abs(nuovoPitch) > limite + 1e-4f) {
             return mostra("SYNC: servirebbe un pitch del ${"%+.1f".format(nuovoPitch * 100)}%, oltre ±${stato.opzioni.escursione}% (Opzioni › Pitch)")
@@ -151,8 +152,8 @@ class Controllore(
         impostaPitch(d, nuovoPitch)
         if (altro.inPlay) {
             // fase: stessa frazione di battuta dell'altro deck
-            val faseAltro = frazioneBattuta(altro.posizione, altro.primoBattito, altro.battitoSecondi)
-            val faseQuesto = frazioneBattuta(questo.posizione, questo.primoBattito, questo.battitoSecondi)
+            val faseAltro = frazione(altro.battutaA(altro.posizione))
+            val faseQuesto = frazione(questo.battutaA(questo.posizione))
             var diff = faseAltro - faseQuesto
             if (diff > 0.5) diff -= 1.0
             if (diff < -0.5) diff += 1.0
@@ -196,25 +197,34 @@ class Controllore(
             ponte.comando(d, Cmd.LOOP, 0.0, 0.0)
             return
         }
-        // il loop parte dalla battuta in cui si è (o da qui se il tempo non è noto)
-        val battito = deck.battitoSecondi
-        val inizio = if (deck.bpm > 0) {
-            deck.primoBattito + floor((deck.posizione - deck.primoBattito) / battito + 1e-6) * battito
+        // Il loop parte dalla battuta più vicina (premendo un attimo prima o un attimo dopo si prende quella giusta);
+        // i loop più corti di una battuta si agganciano alla loro suddivisione (1/2, 1/4, 1/8). La fine si conta
+        // sulla griglia: con i brani a tempo variabile dura davvero N battute di quel punto del brano.
+        val lunghezza = LUNGHEZZE_LOOP[deck.loopIndice]
+        if (deck.bpm > 0) {
+            val passo = minOf(1.0, lunghezza)
+            deck.loopBattuta = Math.round(deck.battutaA(deck.posizione) / passo) * passo
+            deck.loopInizio = deck.tempoDellaBattuta(deck.loopBattuta)
         } else {
-            deck.posizione
+            deck.loopBattuta = 0.0
+            deck.loopInizio = deck.posizione
         }
-        deck.loopInizio = inizio
         deck.loopAttivo = true
-        ponte.comando(d, Cmd.LOOP, inizio, inizio + LUNGHEZZE_LOOP[deck.loopIndice] * battito)
+        ponte.comando(d, Cmd.LOOP, deck.loopInizio, fineLoop(deck))
+    }
+
+    /** Fine del loop: N battute dopo l'inizio, contate sulla griglia (120 BPM se il tempo non è noto). */
+    private fun fineLoop(deck: StatoDeck): Double {
+        val lunghezza = LUNGHEZZE_LOOP[deck.loopIndice]
+        return if (deck.bpm > 0) deck.tempoDellaBattuta(deck.loopBattuta + lunghezza)
+        else deck.loopInizio + lunghezza * 0.5
     }
 
     /** Frecce del loop: −1 dimezza, +1 raddoppia (con il loop acceso cambia subito). */
     fun loopLunghezza(d: Int, verso: Int) {
         val deck = stato.deck[d]
         deck.loopIndice = (deck.loopIndice + verso).coerceIn(0, LUNGHEZZE_LOOP.size - 1)
-        if (deck.loopAttivo) {
-            ponte.comando(d, Cmd.LOOP, deck.loopInizio, deck.loopInizio + LUNGHEZZE_LOOP[deck.loopIndice] * deck.battitoSecondi)
-        }
+        if (deck.loopAttivo) ponte.comando(d, Cmd.LOOP, deck.loopInizio, fineLoop(deck))
     }
 
     // ------------------------------------------------------------------ effetti
@@ -439,6 +449,7 @@ class Controllore(
                     deck.waveform = c.waveform
                     deck.bpm = c.bpm
                     deck.primoBattito = c.primoBattito
+                    deck.battiti = c.battiti
                     deck.durata = c.durata
                     deck.caricamento = if (c.finito) null else c.progresso
                     if (c.finito) ricordaBrano(brano, c.bpm)
@@ -1092,10 +1103,7 @@ class Controllore(
     }
 
     companion object {
-        /** Frazione di battuta (0…1) in cui si trova `posizione`. */
-        fun frazioneBattuta(posizione: Double, primoBattito: Double, battito: Double): Double {
-            val x = (posizione - primoBattito) / battito
-            return x - floor(x)
-        }
+        /** Parte frazionaria (0…1) di una battuta frazionaria. */
+        fun frazione(x: Double): Double = x - floor(x)
     }
 }

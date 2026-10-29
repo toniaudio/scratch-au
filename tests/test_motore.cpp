@@ -713,7 +713,16 @@ static void testKeylock() {
 }
 
 // Batteria finta: cassa su ogni battito, rullante sul 2 e sul 4, charleston in levare; prima battuta a `inizio` s
+// Batteria su battute date (istanti in secondi): cassa su ogni battuta, rullante sui pari, charleston a metà
+static Traccia* batteriaSu(const std::vector<double>& battute, double secondi, double sr = 44100.0);
+
 static Traccia* batteria(double bpm, double secondi, double inizio, double sr = 44100.0) {
+    std::vector<double> battute;
+    for (int k = 0; inizio + k * 60.0 / bpm < secondi; ++k) battute.push_back(inizio + k * 60.0 / bpm);
+    return batteriaSu(battute, secondi, sr);
+}
+
+static Traccia* batteriaSu(const std::vector<double>& battute, double secondi, double sr) {
     auto* t = new Traccia();
     t->sampleRate = sr;
     const int64_t n = static_cast<int64_t>(secondi * sr);
@@ -723,9 +732,9 @@ static Traccia* batteria(double bpm, double secondi, double inizio, double sr = 
         caso = caso * 1664525u + 1013904223u;
         return static_cast<float>(caso >> 8) / 8388608.0f - 1.0f;
     };
-    const double battito = 60.0 / bpm;
-    for (int k = 0; inizio + k * battito < secondi; ++k) {
-        const double tb = inizio + k * battito;
+    for (size_t k = 0; k < battute.size(); ++k) {
+        const double tb = battute[k];
+        const double battito = k + 1 < battute.size() ? battute[k + 1] - tb : (k > 0 ? tb - battute[k - 1] : 0.5);
         auto aggiungi = [&](double quando, double durata, auto suono) {
             const int64_t a = static_cast<int64_t>(quando * sr);
             for (int64_t i = 0; i < static_cast<int64_t>(durata * sr) && a + i < n; ++i)
@@ -759,7 +768,56 @@ static void testBpm() {
         char testo[112];
         std::snprintf(testo, sizeof testo, "BPM %.1f: trovato %.2f, prima battuta sfasata di %.1f ms", c.bpm, tempo.bpm,
                       scarto * 1000.0);
-        verifica(vicino(tempo.bpm, c.bpm, 0.1) && scarto < 0.015, testo);
+        verifica(vicino(tempo.bpm, c.bpm, 0.1) && scarto < 0.015 && tempo.battiti.empty(), testo);
+        delete t;
+    }
+    // Brano che accelera piano (batterista vero): da 100 a 108 BPM in 3 minuti. La griglia fissa sbaglierebbe di
+    // parecchio; quella variabile deve stare sulle battute vere
+    {
+        std::vector<double> vere;
+        double fase = 0.0;
+        const double durata = 180.0, passo = 1e-4;
+        double prossima = 0.3;
+        for (double t = 0.0; t < durata; t += passo) {
+            if (t >= prossima) {
+                vere.push_back(t);
+                prossima = 1e9;
+            }
+            fase += (100.0 + 8.0 * t / durata) / 60.0 * passo;
+            if (fase >= 1.0) {
+                fase -= 1.0;
+                prossima = t + passo;
+            }
+        }
+        // la prima a 0,3 s, poi una ogni volta che la fase fa un giro
+        Traccia* t = batteriaSu(vere, durata);
+        const Tempo tempo = analizzaTempo(*t);
+        int prese = 0;
+        double peggiore = 0.0;
+        for (double v : vere) {
+            if (v < 2.0 || v > durata - 2.0) continue;
+            double vicina = 1e9;
+            for (double b : tempo.battiti) vicina = std::min(vicina, std::fabs(b - v));
+            if (vicina < 0.005) ++prese;
+            peggiore = std::max(peggiore, vicina);
+        }
+        int contate = 0;
+        for (double v : vere) contate += v >= 2.0 && v <= durata - 2.0;
+        char testo[140];
+        std::snprintf(testo, sizeof testo, "tempo che cambia (100→108 BPM): griglia variabile, %d/%d battute entro 5 ms (peggiore %.1f ms)",
+                      prese, contate, peggiore * 1000.0);
+        verifica(!tempo.battiti.empty() && prese == contate && peggiore < 0.004, testo);
+        delete t;
+    }
+    {  // tempo fisso con 30 s di pausa (niente batteria) in mezzo: resta la griglia fissa, giusta
+        std::vector<double> battute;
+        for (int k = 0; 0.2 + k * 60.0 / 124.0 < 150.0; ++k) {
+            const double t = 0.2 + k * 60.0 / 124.0;
+            if (t < 60.0 || t > 90.0) battute.push_back(t);
+        }
+        Traccia* t = batteriaSu(battute, 150.0);
+        const Tempo tempo = analizzaTempo(*t);
+        verifica(vicino(tempo.bpm, 124.0, 0.05) && tempo.battiti.empty(), "BPM fisso con una pausa in mezzo: griglia fissa");
         delete t;
     }
     Traccia* tono = sinusoide(440.0, 20.0);
@@ -825,6 +883,7 @@ static void testCacheWaveform() {
     Tempo tempo;
     tempo.bpm = 98.5;
     tempo.primoBattito = 0.37;
+    tempo.battiti = {0.37, 0.98, 1.6, 2.21};
     Waveform letta;
     Tempo tempoLetto;
     const bool ok = salvaWaveform(w, tempo, percorso.c_str()) && caricaWaveform(percorso.c_str(), letta, tempoLetto);
@@ -832,7 +891,7 @@ static void testCacheWaveform() {
     for (size_t i = 0; uguale && i < w.livelli.size(); ++i)
         uguale = letta.livelli[i].bassi == w.livelli[i].bassi && letta.livelli[i].medi == w.livelli[i].medi &&
                  letta.livelli[i].alti == w.livelli[i].alti && letta.livelli[i].framePerColonna == w.livelli[i].framePerColonna;
-    verifica(uguale && tempoLetto.bpm == 98.5 && tempoLetto.primoBattito == 0.37,
+    verifica(uguale && tempoLetto.bpm == 98.5 && tempoLetto.primoBattito == 0.37 && tempoLetto.battiti == tempo.battiti,
              "waveform e tempo salvati e ricaricati identici (tutti i livelli)");
     // file rovinato: rifiutato senza danni
     if (FILE* f = std::fopen(percorso.c_str(), "r+b")) {

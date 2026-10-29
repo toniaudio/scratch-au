@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "Filtri.h"
+#include "SenzaDenormali.h"
 #include <vector>
 
 namespace djaaay {
@@ -39,7 +40,7 @@ void costruisciLivelli(Waveform& w) {
 }
 
 const char kFirma[4] = {'D', 'V', 'S', 'W'};
-constexpr uint32_t kVersioneFile = 2;  // 2: con BPM e prima battuta
+constexpr uint32_t kVersioneFile = 3;  // 2: con BPM e prima battuta · 3: con la griglia variabile
 
 }  // namespace
 
@@ -53,6 +54,9 @@ bool salvaWaveform(const Waveform& w, const Tempo& tempo, const char* percorso) 
     bool ok = std::fwrite(kFirma, 1, 4, f) == 4 && std::fwrite(testa, sizeof testa, 1, f) == 1 &&
               std::fwrite(&colonne, sizeof colonne, 1, f) == 1 && std::fwrite(&tempo.bpm, sizeof(double), 1, f) == 1 &&
               std::fwrite(&tempo.primoBattito, sizeof(double), 1, f) == 1;
+    const uint64_t battiti = tempo.battiti.size();
+    ok = ok && std::fwrite(&battiti, sizeof battiti, 1, f) == 1 &&
+         (battiti == 0 || std::fwrite(tempo.battiti.data(), sizeof(double), battiti, f) == battiti);
     for (const auto* banda : {&l.bassi, &l.medi, &l.alti})
         ok = ok && std::fwrite(banda->data(), 1, banda->size(), f) == banda->size();
     return std::fclose(f) == 0 && ok;
@@ -71,6 +75,12 @@ bool caricaWaveform(const char* percorso, Waveform& w, Tempo& tempo) {
     Tempo letto;
     ok = ok && std::fread(&letto.bpm, sizeof(double), 1, f) == 1 && std::fread(&letto.primoBattito, sizeof(double), 1, f) == 1 &&
          letto.bpm >= 0.0 && letto.bpm < 1000.0;
+    uint64_t battiti = 0;
+    ok = ok && std::fread(&battiti, sizeof battiti, 1, f) == 1 && battiti < (1ull << 24);
+    if (ok && battiti > 0) {
+        letto.battiti.resize(static_cast<size_t>(battiti));
+        ok = std::fread(letto.battiti.data(), sizeof(double), battiti, f) == battiti;
+    }
     Waveform::Livello l;
     if (ok) {
         for (auto* banda : {&l.bassi, &l.medi, &l.alti}) {
@@ -156,6 +166,131 @@ double adattaGriglia(const std::vector<float>& c, double periodo, double& faseMi
     return migliore;
 }
 
+// Battute vere lungo tutto il brano, anche se il tempo cambia: programmazione dinamica (come Ellis, 2007). Ogni
+// battuta sta su un attacco forte e dista dalla precedente circa un periodo: allontanarsene costa, così la griglia
+// segue rallentamenti e accelerazioni ma non salta sui controtempi. Poi ogni battuta si affina tra le finestre
+// (parabola sul picco) e si liscia con le vicine (parabola su ±8 battute): niente tremolii di qualche ms.
+std::vector<double> trovaBattute(const std::vector<float>& curva, double periodo, double finestreAlSecondo) {
+    const auto n = static_cast<int64_t>(curva.size());
+    std::vector<double> battute;
+    if (n < static_cast<int64_t>(4 * periodo) || periodo < 4.0) return battute;
+    double media = 0.0, q = 0.0;
+    for (float v : curva) {
+        media += v;
+        q += static_cast<double>(v) * v;
+    }
+    media /= static_cast<double>(n);
+    const double devStd = std::sqrt(std::max(1e-12, q / static_cast<double>(n) - media * media));
+    const auto da = static_cast<int64_t>(std::floor(0.7 * periodo)), a = static_cast<int64_t>(std::ceil(1.3 * periodo));
+    std::vector<double> costo(static_cast<size_t>(a + 1), 0.0);
+    constexpr double kRigidita = 100.0;
+    for (int64_t d = da; d <= a; ++d) {
+        const double r = std::log(static_cast<double>(d) / periodo);
+        costo[static_cast<size_t>(d)] = kRigidita * r * r;
+    }
+    std::vector<double> punti(static_cast<size_t>(n));
+    std::vector<int64_t> prima(static_cast<size_t>(n), -1);
+    for (int64_t t = 0; t < n; ++t) {
+        const double qui = curva[static_cast<size_t>(t)] / devStd;
+        double meglio = 0.0;
+        int64_t daDove = -1;
+        for (int64_t d = da; d <= a && d <= t; ++d) {
+            const double v = punti[static_cast<size_t>(t - d)] - costo[static_cast<size_t>(d)];
+            if (daDove < 0 || v > meglio) {
+                meglio = v;
+                daDove = t - d;
+            }
+        }
+        punti[static_cast<size_t>(t)] = qui + (daDove >= 0 ? meglio : 0.0);
+        prima[static_cast<size_t>(t)] = daDove;
+    }
+    // l'ultima battuta: la migliore nell'ultimo periodo; poi all'indietro
+    int64_t t = n - 1;
+    for (int64_t k = n - 1; k >= std::max<int64_t>(0, n - a); --k)
+        if (punti[static_cast<size_t>(k)] > punti[static_cast<size_t>(t)]) t = k;
+    std::vector<double> indici;
+    for (; t >= 0; t = prima[static_cast<size_t>(t)]) {
+        double f = static_cast<double>(t);
+        if (t > 0 && t + 1 < n) {
+            const double y0 = curva[static_cast<size_t>(t - 1)], y1 = curva[static_cast<size_t>(t)], y2 = curva[static_cast<size_t>(t + 1)];
+            const double den = y0 - 2.0 * y1 + y2;
+            if (y1 >= y0 && y1 >= y2 && den < 0.0) f += std::clamp(0.5 * (y0 - y2) / den, -0.5, 0.5);
+        }
+        indici.push_back(f);
+    }
+    std::reverse(indici.begin(), indici.end());
+
+    // Battute "ritmiche": su un colpo chiaro, e anche le vicine lo sono. Nei tratti senza ritmo (break, pause con
+    // qualche suono sparso) la programmazione dinamica può inseguire un suono isolato: lì le battute si
+    // ridistribuiscono uguali tra le ultime ritmiche prima e le prime dopo.
+    const auto nb = static_cast<int64_t>(indici.size());
+    std::vector<char> forte(static_cast<size_t>(nb)), ritmica(static_cast<size_t>(nb));
+    for (int64_t k = 0; k < nb; ++k)
+        forte[static_cast<size_t>(k)] = curva[static_cast<size_t>(std::llround(indici[static_cast<size_t>(k)]))] / devStd >= 1.0;
+    for (int64_t k = 0; k < nb; ++k)
+        ritmica[static_cast<size_t>(k)] = forte[static_cast<size_t>(k)] && (k == 0 || forte[static_cast<size_t>(k - 1)]) &&
+                                          (k + 1 == nb || forte[static_cast<size_t>(k + 1)]);
+    std::vector<int64_t> ancore;
+    for (int64_t k = 0; k < nb; ++k)
+        if (ritmica[static_cast<size_t>(k)]) ancore.push_back(k);
+    if (ancore.size() >= 2) {
+        // periodo vicino a un'ancora: dalle battute ritmiche accanto (altrimenti quello medio)
+        auto periodoVicino = [&](int64_t k) {
+            for (int64_t j : {k + 1, k - 1})
+                if (j >= 0 && j < nb && ritmica[static_cast<size_t>(j)])
+                    return std::fabs(indici[static_cast<size_t>(std::max(j, k))] - indici[static_cast<size_t>(std::min(j, k))]);
+            return periodo;
+        };
+        std::vector<double> nuovi;
+        // prima della prima ancora: all'indietro col suo periodo fino all'inizio del brano
+        const double p0 = periodoVicino(ancore.front());
+        for (double t = indici[static_cast<size_t>(ancore.front())] - p0; t >= 0.0; t -= p0) nuovi.push_back(t);
+        std::reverse(nuovi.begin(), nuovi.end());
+        for (size_t a = 0; a < ancore.size(); ++a) {
+            const double ta = indici[static_cast<size_t>(ancore[a])];
+            nuovi.push_back(ta);
+            if (a + 1 == ancore.size()) break;
+            const double tb = indici[static_cast<size_t>(ancore[a + 1])];
+            if (ancore[a + 1] == ancore[a] + 1) continue;  // vicine: niente da riempire
+            const double p = 0.5 * (periodoVicino(ancore[a]) + periodoVicino(ancore[a + 1]));
+            const int64_t passi = std::max<int64_t>(1, std::llround((tb - ta) / p));
+            for (int64_t i = 1; i < passi; ++i) nuovi.push_back(ta + (tb - ta) * static_cast<double>(i) / static_cast<double>(passi));
+        }
+        // dopo l'ultima: avanti fino alla fine
+        const double pn = periodoVicino(ancore.back());
+        for (double t = indici[static_cast<size_t>(ancore.back())] + pn; t < static_cast<double>(n); t += pn) nuovi.push_back(t);
+        indici = std::move(nuovi);
+    }
+    const auto m = static_cast<int64_t>(indici.size());
+    battute.resize(static_cast<size_t>(m));
+    for (int64_t k = 0; k < m; ++k) {
+        // parabola ai minimi quadrati sulle battute vicine, valutata in k: segue anche un tempo che cambia
+        // (una retta "taglierebbe le curve") e toglie il tremolio dei singoli attacchi
+        const int64_t i0 = std::max<int64_t>(0, k - 8), i1 = std::min<int64_t>(m - 1, k + 8);
+        double s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, y0 = 0, y1 = 0, y2 = 0;
+        for (int64_t i = i0; i <= i1; ++i) {
+            const double x = static_cast<double>(i - k), y = indici[static_cast<size_t>(i)] - indici[static_cast<size_t>(k)];
+            s0 += 1;
+            s1 += x;
+            s2 += x * x;
+            s3 += x * x * x;
+            s4 += x * x * x * x;
+            y0 += y;
+            y1 += x * y;
+            y2 += x * x * y;
+        }
+        // sistema 3×3 (Cramer) per y = a + b·x + c·x²: serve solo a
+        const double det = s0 * (s2 * s4 - s3 * s3) - s1 * (s1 * s4 - s3 * s2) + s2 * (s1 * s3 - s2 * s2);
+        double a0 = 0.0;
+        if (std::fabs(det) > 1e-9) {
+            a0 = (y0 * (s2 * s4 - s3 * s3) - s1 * (y1 * s4 - s3 * y2) + s2 * (y1 * s3 - s2 * y2)) / det;
+        }
+        battute[static_cast<size_t>(k)] = (indici[static_cast<size_t>(k)] + a0) / finestreAlSecondo;
+    }
+    for (size_t k = 1; k < battute.size(); ++k) battute[k] = std::max(battute[k], battute[k - 1] + 1e-3);
+    return battute;
+}
+
 }  // namespace
 
 // finestre di ~5,8 ms
@@ -164,6 +299,7 @@ static int passoAttacchi(double sampleRate) { return std::max(32, static_cast<in
 static Tempo tempoDaCurva(const std::vector<float>& grezza, double finestreAlSecondo) {
     Tempo tempo;
     std::vector<float> c = pulisci(grezza, finestreAlSecondo);
+    const std::vector<float> intera = c;  // per la griglia variabile serve tutto il brano
     const size_t massimo = static_cast<size_t>(240.0 * finestreAlSecondo);  // bastano i primi 4 minuti
     if (c.size() > massimo) c.resize(massimo);
     if (c.size() < static_cast<size_t>(8.0 * finestreAlSecondo)) return tempo;  // troppo corto
@@ -210,6 +346,26 @@ static Tempo tempoDaCurva(const std::vector<float>& grezza, double finestreAlSec
     }
     tempo.bpm = bpm;
     tempo.primoBattito = (fase + kCorrezioneFase) / finestreAlSecondo;
+
+    // 3) il tempo cambia lungo il brano? Si cercano le battute vere: se per almeno 8 battute di fila si allontanano
+    // dalla griglia fissa più di 20 ms, la griglia diventa quella delle battute vere
+    std::vector<double> vere = trovaBattute(intera, 60.0 / bpm * finestreAlSecondo, finestreAlSecondo);
+    const double battito = 60.0 / bpm;
+    int fuori = 0, maxFuori = 0;
+    for (double b : vere) {
+        const double k = std::round((b - tempo.primoBattito) / battito);
+        const double scarto = std::fabs(b - (tempo.primoBattito + k * battito));
+        fuori = scarto > 0.020 ? fuori + 1 : 0;
+        maxFuori = std::max(maxFuori, fuori);
+    }
+    if (maxFuori >= 8 && vere.size() >= 16) {
+        std::vector<double> intervalli;
+        for (size_t k = 1; k < vere.size(); ++k) intervalli.push_back(vere[k] - vere[k - 1]);
+        std::nth_element(intervalli.begin(), intervalli.begin() + static_cast<long>(intervalli.size() / 2), intervalli.end());
+        tempo.bpm = std::round(60.0 / intervalli[intervalli.size() / 2] * 100.0) / 100.0;
+        tempo.primoBattito = vere.front();
+        tempo.battiti = std::move(vere);
+    }
     return tempo;
 }
 
@@ -245,6 +401,7 @@ void AnalisiProgressiva::chiudiFinestra() {
 
 // Un solo passaggio sul mono L+R per tutte e due le analisi
 void AnalisiProgressiva::aggiorna(const Traccia& t) {
+    SenzaDenormali senza;  // nei silenzi i filtri sarebbero lentissimi
     int64_t quanti = 0;
     while (const int16_t* p = t.pezzo(fatti_, quanti)) {
         for (int64_t i = 0; i < quanti; ++i) {

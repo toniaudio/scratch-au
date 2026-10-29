@@ -182,12 +182,12 @@ private fun DrawScope.disegnaGriglia(deck: StatoDeck, pxAlSecondo: Float, altezz
     val inizioVisibile = deck.posizione - size.width / 2 / pxAlSecondo
     val fineVisibile = deck.posizione + size.width / 2 / pxAlSecondo
     if (deck.bpm > 0) {
-        val battito = deck.battitoSecondi
-        val pxBattito = battito * pxAlSecondo
+        // si disegna la griglia vera (fissa o variabile): una riga per battuta, più marcata ogni 4
+        val pxBattito = deck.battitoSecondi * pxAlSecondo
         if (pxBattito > 4) {  // con zoom molto lontano la griglia sarebbe solo rumore
-            var k = ceil((inizioVisibile - deck.primoBattito) / battito).toInt()
+            var k = ceil(deck.battutaA(inizioVisibile)).toInt()
             while (true) {
-                val t = deck.primoBattito + k * battito
+                val t = deck.tempoDellaBattuta(k.toDouble())
                 if (t > fineVisibile) break
                 val forte = Math.floorMod(k, 4) == 0
                 drawLine(Color.White.copy(alpha = if (forte) 0.45f else 0.19f), Offset(xDi(t), 0f), Offset(xDi(t), altezza), 1.dp.toPx())
@@ -197,7 +197,8 @@ private fun DrawScope.disegnaGriglia(deck: StatoDeck, pxAlSecondo: Float, altezz
     }
     if (deck.loopAttivo) {
         val a = xDi(deck.loopInizio)
-        val b = xDi(deck.loopInizio + LUNGHEZZE_LOOP[deck.loopIndice] * deck.battitoSecondi)
+        val b = xDi(if (deck.bpm > 0) deck.tempoDellaBattuta(deck.loopBattuta + LUNGHEZZE_LOOP[deck.loopIndice])
+                    else deck.loopInizio + LUNGHEZZE_LOOP[deck.loopIndice] * 0.5)
         drawRect(Colori.Verde.copy(alpha = 0.16f), Offset(a, 0f), Size(max(0f, b - a), altezza))
         drawLine(Colori.Verde, Offset(a, 0f), Offset(a, altezza), 2.dp.toPx())
         drawLine(Colori.Verde, Offset(b, 0f), Offset(b, altezza), 2.dp.toPx())
