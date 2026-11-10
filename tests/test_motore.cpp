@@ -845,6 +845,26 @@ static void testBpm() {
                       prese, contate, peggiore * 1000.0);
         verifica(!tempo.battiti.empty() && prese == contate && peggiore < 0.004, testo);
         delete t;
+        // Lo stesso brano con qualche colpo suonato fuori posto (uno ogni 10, 25 ms in ritardo, come in un break o in
+        // un campione "storto"): la griglia non deve spezzarsi lì, deve restare sulle battute vere
+        std::vector<double> storte = vere;
+        for (size_t k = 5; k < storte.size(); k += 10) storte[k] += 0.025;
+        Traccia* ts = batteriaSu(storte, durata);
+        const Tempo ts_tempo = analizzaTempo(*ts);
+        double peggioreS = 0.0, somma = 0.0;
+        int quante = 0;
+        for (double v : vere) {
+            if (v < 2.0 || v > durata - 2.0) continue;
+            double vicina = 1e9;
+            for (double b : ts_tempo.battiti) vicina = std::min(vicina, std::fabs(b - v));
+            peggioreS = std::max(peggioreS, vicina);
+            somma += vicina;
+            ++quante;
+        }
+        std::snprintf(testo, sizeof testo, "tempo che cambia con colpi fuori posto: errore medio %.1f ms, peggiore %.1f ms",
+                      somma / quante * 1000.0, peggioreS * 1000.0);
+        verifica(!ts_tempo.battiti.empty() && somma / quante < 0.003 && peggioreS < 0.008, testo);
+        delete ts;
     }
     {  // mix di più brani: 118 BPM, rampa a 124, poi un brano nuovo a 128 sfasato di mezza battuta
         std::vector<double> vere;

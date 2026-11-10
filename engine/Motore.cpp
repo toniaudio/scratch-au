@@ -61,9 +61,16 @@ void Motore::sincronizza(int n) {
         const double battuteAlSecondo = guida.rapportoBase() / guida.durataMediaQui();
         // tempo di base lisciato in ~2 s: le imprecisioni della griglia non arrivano al fader (le piccole differenze
         // le recuperano le correzioni di fase)
-        const double grezzo = battuteAlSecondo * segue.durataMediaQui();
+        // Anche quando uno dei due brani cambia tempo (dentro un mix il DJ accelera verso il brano dopo) chi segue
+        // resta sulle battute: il pitch va dove serve, senza mai saltare di un'ottava (metà o doppio tempo)
+        double grezzo = battuteAlSecondo * segue.durataMediaQui();
         double base = segue.rapportoBaseAttuale();
-        base = base > 0.0 ? grezzo + (base - grezzo) * std::exp(-static_cast<double>(n) / (2.0 * sr_)) : grezzo;
+        if (base > 0.0) {
+            while (grezzo > base * 1.4142) grezzo *= 0.5;
+            while (grezzo < base * 0.7071) grezzo *= 2.0;
+        }
+        grezzo = std::clamp(grezzo, 0.25, 4.0);
+        base = base > 0.0 ? grezzo + (base - grezzo) * std::exp(-static_cast<double>(n) / (1.0 * sr_)) : grezzo;
         double correzione = 0.0;  // battute al secondo in più o in meno
         if (guida.suona() && guida.aMotore() && segue.aMotore() && !guida.loopCorto() && !segue.loopCorto()) {
             double scarto = guida.battutaQui() - segue.battutaQui();
@@ -80,8 +87,10 @@ void Motore::sincronizza(int n) {
                 segue.allineato();
                 scarto = 0.0;
             }
-            if (std::fabs(scarto) / battuteAlSecondo > 0.002) {
-                const double limite = 0.004 * battuteAlSecondo;
+            if (std::fabs(scarto) / battuteAlSecondo > 0.001) {
+                // di solito correzioni invisibili (max 0,4%); se si resta indietro (un brano che accelera) più decise
+                const double ms = std::fabs(scarto) / battuteAlSecondo * 1000.0;
+                const double limite = (ms < 8.0 ? 0.004 : std::min(0.03, 0.004 + (ms - 8.0) * 0.001)) * battuteAlSecondo;
                 correzione = std::clamp(scarto / 1.5, -limite, limite);
             }
         }

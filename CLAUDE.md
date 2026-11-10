@@ -198,6 +198,18 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
 - **BPM e pitch fermi come djay** (10/11): il BPM in alto = BPM del brano (uno solo, `bpmMostrati` = bpm × (1+pitch)),
   il deck in SYNC mostra quello della guida; sul fader del deck in SYNC il pitch nominale (BPM guida / BPM brano),
   le correzioni del motore non si vedono. `bpmEffettivi`/`bpmQui` (locali) restano solo per i calcoli.
+- **Prova sul mix vero dell'utente** (10/11, hip-hop 16:44 a tempi diversi; il file NON va nel repo, solo nello
+  scratchpad): la griglia seguiva il tempo medio (96,8) invece dei brani (95 · 100,05 · 128,8 · 104,92 · 141,8 ·
+  115,73 · 112,3). Ora: `periodiLocali` = tempo locale (Viterbi su tempogramma 8 s ogni 2 s, 60–180 BPM, cambio
+  costoso); `trovaBattute` col periodo locale; un colpo solo fuori posto (intervalli che si compensano) non spezza
+  la lisciatura; `grigliaATratti` = griglia FISSA per ogni brano (tempo al centesimo e fase), verificata a pezzi di
+  8 s (≤ 10 ms, altrimenti si divide), tempo fermo se gli spostamenti dei pezzi stanno entro 4 ms (parabola), bordi
+  accorciati finché combaciano con le battute trovate, buchi tra due tratti in fase riempiti con battute uguali.
+  File di analisi v6. SYNC: niente blocco quando un brano cambia tempo (dentro un mix il DJ accelera): chi segue
+  resta sulle battute, mai salti di metà/doppio tempo; base lisciata in 1 s; correzioni invisibili oltre 1 ms (max
+  0,4%), più decise se si resta indietro (> 8 ms, fino al 3%). Loop: la fine si sposta come l'inizio (lunghezza
+  esatta). Risultati (A a 3:00, B dentro un brano): fase entro 1–1,4 ms per 60 s, pitch fermo; B a 9:00: entro
+  3,8 ms fino al passaggio al brano dopo. Strumenti nello scratchpad `brano/` (prova_fase, prova_loop, controlla).
 - iOS valutato (28/10): fattibile (motore C++ riusabile, UI con Compose Multiplatform), ma con Apple ID gratuito la
   firma scade ogni 7 giorni (o 99 €/anno). L'utente ha deciso: **per ora resta solo Android**.
 - Prossimo: prova vera dell'utente (MIDI con l'X-Session, DVS con scheda USB), poi pre-ascolto in cuffia

@@ -289,15 +289,13 @@ void Deck::applica(const ComandoDeck& c) {
             loopInizio_ = c.a * sr;
             loopFine_ = c.b * sr;
             if (loop_ && c.aggancia) {
-                // inizio e fine sui colpi veri vicini alla griglia: il loop riparte col colpo intero e non prende
-                // l'inizio di quello dopo. Se un capo non ha un colpo netto vicino si sposta come l'altro.
-                const double a = attaccoVicino(loopInizio_), b = attaccoVicino(loopFine_);
-                const double da = a >= 0.0 ? a - loopInizio_ : 0.0, db = b >= 0.0 ? b - loopFine_ : da;
-                const double nuovoInizio = loopInizio_ + (a >= 0.0 ? da : db);
-                const double nuovaFine = loopFine_ + db;
-                if (nuovaFine - nuovoInizio > 0.5 * (loopFine_ - loopInizio_)) {
-                    loopInizio_ = nuovoInizio;
-                    loopFine_ = nuovaFine;
+                // l'inizio va sul colpo vero vicino alla griglia (il loop riparte col colpo intero) e la fine si
+                // sposta esattamente come l'inizio: la lunghezza resta quella giusta in battute, a ogni giro il ritmo
+                // non scivola. Se lì non c'è un colpo netto si resta sulla griglia.
+                const double a = attaccoVicino(loopInizio_);
+                if (a >= 0.0) {
+                    loopFine_ += a - loopInizio_;
+                    loopInizio_ = a;
                 }
             }
             loopInizioLetto_.store(loop_ ? loopInizio_ / sr : 0.0, std::memory_order_relaxed);
