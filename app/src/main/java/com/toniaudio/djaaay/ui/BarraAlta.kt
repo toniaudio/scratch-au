@@ -149,7 +149,10 @@ private fun InfoDeck(app: StatoApp, deck: StatoDeck, c: Controllore, modifier: M
         val tempo = @Composable {
             Column(horizontalAlignment = if (b) Alignment.Start else Alignment.End) {
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text(if (deck.bpm > 0) "%.1f".format(deck.bpmEffettivi) else "—", color = Colori.Testo, fontSize = if (telefono) 16.sp else 13.sp,
+                    // col SYNC si mostra lo stesso BPM della guida (come djay): i due numeri coincidono e non ballano
+                    val guida = app.deck[1 - deck.indice]
+                    val bpmQui = if (deck.sincro && guida.bpm > 0) guida.bpmMostrati else deck.bpmMostrati
+                    Text(if (deck.bpm > 0) "%.1f".format(bpmQui) else "—", color = Colori.Testo, fontSize = if (telefono) 16.sp else 13.sp,
                         fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                     Text(" BPM", color = Colori.Spento, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
                 }

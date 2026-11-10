@@ -94,8 +94,12 @@ class Controllore(
         for (d in stato.deck) {
             val o = d.indice * 8
             d.posizione = istantanea[o]
-            // col SYNC il pitch lo decide il motore; sul fader cambia solo oltre lo 0,1% (niente tremolii)
-            if (d.sincro && abs(istantanea[o + 7].toFloat() - d.pitch) > 0.001f) d.pitch = istantanea[o + 7].toFloat()
+            // col SYNC sul fader si vede il pitch "nominale", come djay: BPM della guida / BPM del brano, fermo.
+            // Le piccole correzioni del motore (tempi che cambiano, fase) non si vedono.
+            if (d.sincro) {
+                val guida = stato.deck[1 - d.indice]
+                if (guida.bpm > 0 && d.bpm > 0) d.pitch = (guida.bpmMostrati / d.bpm - 1.0).toFloat()
+            }
             d.durata = istantanea[o + 1]
             d.velocita = istantanea[o + 2]
             d.inPlay = istantanea[o + 3] > 0.5

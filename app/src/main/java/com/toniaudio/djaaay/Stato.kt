@@ -199,8 +199,12 @@ class StatoDeck(val indice: Int) {
     /** BPM del brano dove si trova la puntina (cambia lungo i brani col tempo variabile). */
     val bpmQui: Double get() = if (bpm > 0) 60.0 / battitoSecondi else 0.0
 
-    /** BPM che si sentono davvero (con il pitch). */
+    /** BPM che si sentono davvero dove si trova la puntina (con il pitch): per i calcoli, cambia lungo i brani variabili. */
     val bpmEffettivi: Double get() = bpmQui * (1.0 + pitch)
+
+    /** BPM da mostrare, come nei programmi da DJ: il BPM del brano (uno solo) per il pitch. Fermo finché non si
+     *  tocca il pitch, anche sui brani a tempo variabile. */
+    val bpmMostrati: Double get() = bpm * (1.0 + pitch)
 }
 
 /** I brani che la libreria del deck mostra adesso (scheda, cartella e ricerca); vuota per l'elenco delle cartelle. */

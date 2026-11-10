@@ -34,16 +34,17 @@ class ControlloreTest {
         assertTrue(stato.deck[1].sincro)
         assertEquals(1f, ponte.deck[1 to ParDeck.SINCRO])
         assertEquals(102.0 / 98.0 - 1.0, stato.deck[1].pitch.toDouble(), 1e-5)  // subito, prima del motore
-        // poi il pitch lo dice il motore (che tiene il tempo anche se cambia lungo il brano)
+        // sul fader resta il pitch nominale anche se il motore corregge un po' (come djay): fermo
         ponte.istantanea[8 + 7] = 0.031
         c.aggiornaDaMotore()
-        assertEquals(0.031f, stato.deck[1].pitch, 1e-6f)
+        assertEquals((102.0 / 98.0 - 1.0).toFloat(), stato.deck[1].pitch, 1e-6f)
+        assertEquals(stato.deck[0].bpmMostrati, stato.deck[1].bpmMostrati, 1e-3)
         // SYNC su A: B smette di seguire, A segue B
         c.sync(0)
         assertTrue(stato.deck[0].sincro)
         assertTrue(!stato.deck[1].sincro)
         assertEquals(0f, ponte.deck[1 to ParDeck.SINCRO])
-        assertEquals(0.031f, ponte.deck[1 to ParDeck.PITCH])  // B resta al tempo che aveva
+        assertEquals((102.0 / 98.0 - 1.0).toFloat(), ponte.deck[1 to ParDeck.PITCH]!!, 1e-6f)  // B resta al tempo che aveva
         // muovere il pitch a mano stacca il SYNC
         c.impostaPitch(0, 0.01f)
         assertTrue(!stato.deck[0].sincro)

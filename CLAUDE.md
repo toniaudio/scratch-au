@@ -195,6 +195,9 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
   - Analisi: tempi parenti 3/2 e 2/3 controllati (house a 174 era 116); griglia variabile solo con deriva di
     ≥ 16 battute ritmiche di fila (> 20 ms). Test con traccia house sintetica realistica (kick, clap, charleston,
     basso in levare, pad) e mix house 122→125→127: errore medio 0,5 ms. File di analisi v5. BPM mostrato = tempo medio.
+- **BPM e pitch fermi come djay** (10/11): il BPM in alto = BPM del brano (uno solo, `bpmMostrati` = bpm × (1+pitch)),
+  il deck in SYNC mostra quello della guida; sul fader del deck in SYNC il pitch nominale (BPM guida / BPM brano),
+  le correzioni del motore non si vedono. `bpmEffettivi`/`bpmQui` (locali) restano solo per i calcoli.
 - iOS valutato (28/10): fattibile (motore C++ riusabile, UI con Compose Multiplatform), ma con Apple ID gratuito la
   firma scade ogni 7 giorni (o 99 €/anno). L'utente ha deciso: **per ora resta solo Android**.
 - Prossimo: prova vera dell'utente (MIDI con l'X-Session, DVS con scheda USB), poi pre-ascolto in cuffia
