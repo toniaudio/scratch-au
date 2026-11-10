@@ -51,8 +51,12 @@ Deck::Deck() = default;
 
 Deck::~Deck() {
     Traccia::rilascia(traccia_);
+    delete griglia_;
     ComandoDeck c;
-    while (comandi_.ricevi(c)) Traccia::rilascia(c.traccia);
+    while (comandi_.ricevi(c)) {
+        Traccia::rilascia(c.traccia);
+        delete c.griglia;
+    }
     raccogliTracceVecchie();
 }
 
@@ -76,9 +80,83 @@ void Deck::carica(Traccia* t) {
     if (!invia(c)) Traccia::rilascia(t);
 }
 
+void Deck::impostaGriglia(Griglia* g) {
+    ComandoDeck c;
+    c.tipo = ComandoDeck::Griglia;
+    c.griglia = g;
+    if (!invia(c)) delete g;
+}
+
 void Deck::raccogliTracceVecchie() {
     Traccia* t = nullptr;
     while (daLiberare_.ricevi(t)) Traccia::rilascia(t);
+    Griglia* g = nullptr;
+    while (grigliaDaLiberare_.ricevi(g)) delete g;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// SYNC (thread audio)
+
+double Deck::battutaQui() const { return griglia_->battutaA(pos_ / traccia_->sampleRate); }
+
+double Deck::durataBattutaQui() const { return griglia_->durataA(pos_ / traccia_->sampleRate); }
+
+double Deck::rapportoMotore() const {
+    return rapportoSincro_ > 0.0 ? rapportoSincro_ : 1.0 + static_cast<double>(pitch.load(std::memory_order_relaxed));
+}
+
+bool Deck::loopCorto() const {
+    if (!loop_ || griglia_ == nullptr || traccia_ == nullptr) return false;
+    const double sr = traccia_->sampleRate;
+    return griglia_->battutaA(loopFine_ / sr) - griglia_->battutaA(loopInizio_ / sr) < 0.95;
+}
+
+void Deck::spostaDiBattute(double battute) {
+    const double sr = traccia_->sampleRate;
+    const double qui = griglia_->battutaA(pos_ / sr);
+    salta(griglia_->tempoDi(qui + battute) * sr);
+}
+
+// Colpo vero vicino: energia a finestre di 1 ms; l'attacco è dove l'energia salta rispetto ai 6 ms prima
+// (almeno 4 volte), preferendo i salti più grandi e più vicini. Si torna un po' prima dell'attacco (0,5 ms): il loop
+// riparte prendendo tutto il colpo, senza tagliarne l'inizio.
+double Deck::attaccoVicino(double pos) const {
+    if (traccia_ == nullptr) return -1.0;
+    const Traccia& t = *traccia_;
+    const int finestra = std::max(8, static_cast<int>(0.001 * t.sampleRate));
+    constexpr int kRaggio = 20, kPrima = 6;
+    constexpr int kTotale = 2 * kRaggio + kPrima + 1;
+    double e[kTotale];
+    const auto base = static_cast<int64_t>(pos) - static_cast<int64_t>(kRaggio + kPrima) * finestra;
+    double massimo = 0.0;
+    for (int k = 0; k < kTotale; ++k) {
+        double somma = 0.0;
+        for (int i = 0; i < finestra; ++i) {
+            const int64_t j = base + static_cast<int64_t>(k) * finestra + i;
+            const float x = 0.5f * (t.campione(j, 0) + t.campione(j, 1));
+            somma += static_cast<double>(x) * x;
+        }
+        e[k] = somma / finestra;
+        massimo = std::max(massimo, e[k]);
+    }
+    if (massimo < 1e-7) return -1.0;  // silenzio
+    double meglio = 0.0;
+    int scelto = -1;
+    for (int k = kPrima; k < kTotale; ++k) {
+        double prima = 0.0;
+        for (int j = k - kPrima; j < k; ++j) prima += e[j];
+        prima /= kPrima;
+        const double salto = e[k] / (prima + 1e-4 * massimo);
+        if (salto < 4.0 || e[k] < 0.05 * massimo) continue;
+        const double distanza = std::fabs(static_cast<double>(k - kPrima - kRaggio)) / kRaggio;
+        const double punti = salto * (1.0 - 0.5 * distanza);
+        if (punti > meglio) {
+            meglio = punti;
+            scelto = k;
+        }
+    }
+    if (scelto < 0) return -1.0;
+    return static_cast<double>(base) + static_cast<double>(scelto) * finestra - 0.5 * finestra;
 }
 
 void Deck::salta(double nuovaPos, bool perKeylock) {
@@ -103,6 +181,10 @@ void Deck::applica(const ComandoDeck& c) {
             }
             traccia_ = c.traccia;
             base_ = traccia_ ? traccia_->sampleRate / srUscita_ : 1.0;
+            // la griglia era del brano vecchio: arriva quella nuova
+            if (griglia_ && !grigliaDaLiberare_.inviaSenzaLock(griglia_)) {
+            }
+            griglia_ = nullptr;
             pos_ = 0.0;
             vel_ = 0.0;
             motore_ = anteprimaCue_ = scivola_ = tocco_ = loop_ = false;
@@ -111,6 +193,7 @@ void Deck::applica(const ComandoDeck& c) {
             break;
         case ComandoDeck::Play:
             anteprimaCue_ = false;
+            if (c.a > 0.5 && !motore_) allinea_ = true;
             motore_ = c.a > 0.5;
             break;
         case ComandoDeck::PlayPausa:
@@ -120,6 +203,7 @@ void Deck::applica(const ComandoDeck& c) {
                 motore_ = true;
             } else {
                 motore_ = !motore_;
+                if (motore_) allinea_ = true;
             }
             break;
         case ComandoDeck::CueGiu:
@@ -135,7 +219,7 @@ void Deck::applica(const ComandoDeck& c) {
                 anteprimaCue_ = true;
                 motore_ = true;
                 scivola_ = false;
-                vel_ = base_ * (1.0 + pitch.load());
+                vel_ = base_ * rapportoMotore();
             }
             break;
         case ComandoDeck::CueSu:
@@ -148,6 +232,7 @@ void Deck::applica(const ComandoDeck& c) {
             break;
         case ComandoDeck::Vai:
             salta(c.a * sr);
+            allinea_ = true;  // col SYNC si rimette subito in fase
             break;
         case ComandoDeck::ToccoInizio:
             tocco_ = true;
@@ -185,11 +270,31 @@ void Deck::applica(const ComandoDeck& c) {
             loop_ = c.b > c.a;
             loopInizio_ = c.a * sr;
             loopFine_ = c.b * sr;
+            if (loop_ && c.aggancia) {
+                // inizio e fine sui colpi veri vicini alla griglia: il loop riparte col colpo intero e non prende
+                // l'inizio di quello dopo. Se un capo non ha un colpo netto vicino si sposta come l'altro.
+                const double a = attaccoVicino(loopInizio_), b = attaccoVicino(loopFine_);
+                const double da = a >= 0.0 ? a - loopInizio_ : 0.0, db = b >= 0.0 ? b - loopFine_ : da;
+                const double nuovoInizio = loopInizio_ + (a >= 0.0 ? da : db);
+                const double nuovaFine = loopFine_ + db;
+                if (nuovaFine - nuovoInizio > 0.5 * (loopFine_ - loopInizio_)) {
+                    loopInizio_ = nuovoInizio;
+                    loopFine_ = nuovaFine;
+                }
+            }
+            loopInizioLetto_.store(loop_ ? loopInizio_ / sr : 0.0, std::memory_order_relaxed);
+            loopFineLetto_.store(loop_ ? loopFine_ / sr : 0.0, std::memory_order_relaxed);
             // loop accorciato (frecce) mentre si è già oltre la nuova fine: si rientra nel loop allo stesso punto della battuta
             if (loop_ && pos_ >= loopFine_ && pos_ >= loopInizio_) {
                 const double lunghezza = loopFine_ - loopInizio_;
                 salta(loopInizio_ + std::fmod(pos_ - loopInizio_, lunghezza));
             }
+            break;
+        case ComandoDeck::Griglia:
+            if (griglia_ && !grigliaDaLiberare_.inviaSenzaLock(griglia_)) {
+                // coda piena: meglio perdere memoria che liberarla nel thread audio
+            }
+            griglia_ = c.griglia;
             break;
     }
 }
@@ -222,7 +327,13 @@ void Deck::renderBlocco(float* l, float* r, int frame, const float* timecode) {
 
     const Traccia& t = *traccia_;
     const double fine = static_cast<double>(t.lunghezza());
-    const double velNormale = base_ * (1.0 + pitch.load(std::memory_order_relaxed));
+    // SYNC appena acceso: si allinea subito la fase
+    const bool sincroOra = sincro.load(std::memory_order_relaxed);
+    if (sincroOra && !sincroPrima_) allinea_ = true;
+    sincroPrima_ = sincroOra;
+    if (!sincroOra) rapportoSincro_ = 0.0;
+    const double velNormale = base_ * rapportoMotore();
+    pitchEffettivo_.store(static_cast<float>(rapportoMotore() - 1.0), std::memory_order_relaxed);
 
     // Frizione 0 → costante di tempo 0,6 s (scivola), 1 → 20 ms (riparte subito)
     const double f = std::clamp(static_cast<double>(frizione.load(std::memory_order_relaxed)), 0.0, 1.0);

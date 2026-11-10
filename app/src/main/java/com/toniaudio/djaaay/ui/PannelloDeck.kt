@@ -69,8 +69,8 @@ fun PannelloDeck(app: StatoApp, d: Int, c: Controllore, modifier: Modifier = Mod
                         }
                     }
                     Assegnabile(app, c, AzioneMidi.SYNC, d, Modifier.weight(1f).height(m.tasto)) {
-                        Tasto(Modifier.fillMaxSize(), onTocco = { c.sync(d) }) {
-                            Etichetta("SYNC", Colori.Testo, m.testoTasto)
+                        Tasto(Modifier.fillMaxSize(), acceso = deck.sincro, onTocco = { c.sync(d) }) {
+                            Etichetta("SYNC", if (deck.sincro) Colori.Sfondo else Colori.Testo, m.testoTasto)
                         }
                     }
                 }

@@ -4,7 +4,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
-import kotlin.math.floor
 
 /**
  * Un brano in caricamento (handle nativo). Si può mettere nel deck già al primo aggiornamento: la decodifica
@@ -95,6 +94,7 @@ class Controllore(
         for (d in stato.deck) {
             val o = d.indice * 8
             d.posizione = istantanea[o]
+            if (d.sincro) d.pitch = istantanea[o + 7].toFloat()  // col SYNC il pitch lo decide il motore
             d.durata = istantanea[o + 1]
             d.velocita = istantanea[o + 2]
             d.inPlay = istantanea[o + 3] > 0.5
@@ -157,30 +157,46 @@ class Controllore(
 
     fun vai(d: Int, secondi: Double) = ponte.comando(d, Cmd.VAI, secondi)
 
-    /** SYNC: stesso tempo dell'altro deck e battute allineate. */
+    /**
+     * SYNC: interruttore. Acceso, il motore tiene questo deck allo stesso tempo dell'altro e con le battute
+     * allineate, di continuo (anche se il tempo dei brani cambia lungo il brano). Uno solo dei due deck segue l'altro.
+     * Spento, il deck resta al tempo a cui era (il fader del pitch lo segue).
+     */
     fun sync(d: Int) {
         val questo = stato.deck[d]
         val altro = stato.deck[1 - d]
+        if (questo.sincro) return sincroSpento(d)
         if (questo.bpm <= 0 || altro.bpm <= 0) return mostra("SYNC: serve il BPM di entrambi i brani")
         val nuovoPitch = (altro.bpmEffettivi / questo.bpmQui - 1.0).toFloat()
         val limite = stato.opzioni.escursione / 100f
         if (abs(nuovoPitch) > limite + 1e-4f) {
             return mostra("SYNC: servirebbe un pitch del ${"%+.1f".format(nuovoPitch * 100)}%, oltre ±${stato.opzioni.escursione}% (Opzioni › Pitch)")
         }
-        impostaPitch(d, nuovoPitch)
-        if (altro.inPlay) {
-            // fase: stessa frazione di battuta dell'altro deck
-            val faseAltro = frazione(altro.battutaA(altro.posizione))
-            val faseQuesto = frazione(questo.battutaA(questo.posizione))
-            var diff = faseAltro - faseQuesto
-            if (diff > 0.5) diff -= 1.0
-            if (diff < -0.5) diff += 1.0
-            if (abs(diff) > 0.005) vai(d, questo.posizione + diff * questo.battitoSecondi)
-        }
+        if (altro.sincro) sincroSpento(1 - d)  // chi era guida ora segue: l'altro diventa la guida
+        questo.sincro = true
+        questo.pitch = nuovoPitch  // subito, prima che il motore lo confermi
+        ponte.impostaDeck(d, ParDeck.SINCRO, 1f)
+    }
+
+    /** SYNC spento: il deck resta al tempo che aveva (il pitch del fader diventa quello che stava suonando). */
+    private fun sincroSpento(d: Int) {
+        val deck = stato.deck[d]
+        deck.sincro = false
+        ponte.impostaDeck(d, ParDeck.PITCH, deck.pitch)
+        ponte.impostaDeck(d, ParDeck.SINCRO, 0f)
+    }
+
+    /** Manda al motore la griglia delle battute del deck (serve al SYNC continuo). */
+    private fun inviaGriglia(d: Int) {
+        val deck = stato.deck[d]
+        if (deck.bpm > 0) ponte.griglia(d, 60.0 / deck.bpm, deck.primoBattito, deck.battiti)
+        else ponte.griglia(d, 0.0, 0.0, null)
     }
 
     // ------------------------------------------------------------------ pitch e keylock
     fun impostaPitch(d: Int, valore: Float) {
+        // muovere il pitch a mano stacca il SYNC
+        if (stato.deck[d].sincro) sincroSpento(d)
         val limite = stato.opzioni.escursione / 100f
         val v = valore.coerceIn(-limite, limite)
         stato.deck[d].pitch = v
@@ -465,9 +481,11 @@ class Controllore(
                         deck.loopAttivo = false
                     }
                     deck.waveform = c.waveform
+                    val grigliaNuova = deck.bpm != c.bpm || deck.primoBattito != c.primoBattito || !deck.battiti.contentEquals(c.battiti)
                     deck.bpm = c.bpm
                     deck.primoBattito = c.primoBattito
                     deck.battiti = c.battiti
+                    if (grigliaNuova && c.bpm > 0) inviaGriglia(d)
                     deck.durata = c.durata
                     deck.caricamento = if (c.finito) null else c.progresso
                     if (c.finito) ricordaBrano(brano, c.bpm)
@@ -1118,10 +1136,5 @@ class Controllore(
             o.unDeck = v[9] > 0.5f
             o.cuffie = v[10] > 0.5f
         }
-    }
-
-    companion object {
-        /** Parte frazionaria (0…1) di una battuta frazionaria. */
-        fun frazione(x: Double): Double = x - floor(x)
     }
 }

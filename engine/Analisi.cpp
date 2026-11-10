@@ -40,7 +40,7 @@ void costruisciLivelli(Waveform& w) {
 }
 
 const char kFirma[4] = {'D', 'V', 'S', 'W'};
-constexpr uint32_t kVersioneFile = 3;  // 2: con BPM e prima battuta · 3: con la griglia variabile
+constexpr uint32_t kVersioneFile = 4;  // 2: BPM e prima battuta · 3: griglia variabile · 4: griglia senza mescolare i brani dei mix
 
 }  // namespace
 
@@ -262,11 +262,29 @@ std::vector<double> trovaBattute(const std::vector<float>& curva, double periodo
         indici = std::move(nuovi);
     }
     const auto m = static_cast<int64_t>(indici.size());
+    // Cambi di brano (nei mix): un intervallo che si scosta più del 5% dai vicini è un salto di fase o di tempo.
+    // La lisciatura non lo attraversa, altrimenti mescolerebbe le battute dei due brani.
+    std::vector<int64_t> tratto(static_cast<size_t>(m), 0);
+    for (int64_t k = 1; k < m; ++k) {
+        std::vector<double> vicini;
+        for (int64_t j = std::max<int64_t>(1, k - 4); j <= std::min<int64_t>(m - 1, k + 4); ++j)
+            if (j != k) vicini.push_back(indici[static_cast<size_t>(j)] - indici[static_cast<size_t>(j - 1)]);
+        bool salto = false;
+        if (vicini.size() >= 3) {
+            std::nth_element(vicini.begin(), vicini.begin() + static_cast<long>(vicini.size() / 2), vicini.end());
+            const double mediana = vicini[vicini.size() / 2];
+            const double qui = indici[static_cast<size_t>(k)] - indici[static_cast<size_t>(k - 1)];
+            salto = std::fabs(qui / mediana - 1.0) > 0.05;
+        }
+        tratto[static_cast<size_t>(k)] = tratto[static_cast<size_t>(k - 1)] + (salto ? 1 : 0);
+    }
     battute.resize(static_cast<size_t>(m));
     for (int64_t k = 0; k < m; ++k) {
-        // parabola ai minimi quadrati sulle battute vicine, valutata in k: segue anche un tempo che cambia
-        // (una retta "taglierebbe le curve") e toglie il tremolio dei singoli attacchi
-        const int64_t i0 = std::max<int64_t>(0, k - 8), i1 = std::min<int64_t>(m - 1, k + 8);
+        // parabola ai minimi quadrati sulle battute vicine (dello stesso tratto), valutata in k: segue anche un tempo
+        // che cambia (una retta "taglierebbe le curve") e toglie il tremolio dei singoli attacchi
+        int64_t i0 = std::max<int64_t>(0, k - 8), i1 = std::min<int64_t>(m - 1, k + 8);
+        while (tratto[static_cast<size_t>(i0)] != tratto[static_cast<size_t>(k)]) ++i0;
+        while (tratto[static_cast<size_t>(i1)] != tratto[static_cast<size_t>(k)]) --i1;
         double s0 = 0, s1 = 0, s2 = 0, s3 = 0, s4 = 0, y0 = 0, y1 = 0, y2 = 0;
         for (int64_t i = i0; i <= i1; ++i) {
             const double x = static_cast<double>(i - k), y = indici[static_cast<size_t>(i)] - indici[static_cast<size_t>(k)];

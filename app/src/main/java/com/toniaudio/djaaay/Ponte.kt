@@ -7,6 +7,8 @@ package com.toniaudio.djaaay
 interface Ponte {
     fun comando(deck: Int, tipo: Int, a: Double = 0.0, b: Double = 0.0)
     fun impostaDeck(deck: Int, parametro: Int, valore: Float)
+    /** Griglia delle battute del brano nel deck (per il SYNC continuo); periodo 0 = nessuna. */
+    fun griglia(deck: Int, periodo: Double, primo: Double, battiti: DoubleArray?)
     fun impostaMixer(parametro: Int, canale: Int, valore: Float)
     fun impostaFx(deck: Int, parametro: Int, tipo: Int, valore: Float)
     fun campionatore(tipo: Int, pad: Int, valore: Int = 0)
@@ -38,6 +40,7 @@ object ParDeck {
     const val FRENATA = 3
     const val KEYLOCK = 4
     const val DVS = 5
+    const val SINCRO = 6
 }
 
 /** Parametri di impostaDvs. */
@@ -92,6 +95,8 @@ object ParFx {
 object PonteNativo : Ponte {
     override fun comando(deck: Int, tipo: Int, a: Double, b: Double) = Motore.comando(deck, tipo, a, b)
     override fun impostaDeck(deck: Int, parametro: Int, valore: Float) = Motore.impostaDeck(deck, parametro, valore)
+    override fun griglia(deck: Int, periodo: Double, primo: Double, battiti: DoubleArray?) =
+        Motore.grigliaDeck(deck, periodo, primo, battiti)
     override fun impostaMixer(parametro: Int, canale: Int, valore: Float) = Motore.impostaMixer(parametro, canale, valore)
     override fun impostaFx(deck: Int, parametro: Int, tipo: Int, valore: Float) = Motore.impostaFx(deck, parametro, tipo, valore)
     override fun campionatore(tipo: Int, pad: Int, valore: Int) = Motore.campionatore(tipo, pad, valore)

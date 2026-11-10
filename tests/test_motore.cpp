@@ -809,6 +809,41 @@ static void testBpm() {
         verifica(!tempo.battiti.empty() && prese == contate && peggiore < 0.004, testo);
         delete t;
     }
+    {  // mix di più brani: 118 BPM, rampa a 124, poi un brano nuovo a 128 sfasato di mezza battuta
+        std::vector<double> vere;
+        double f = 0.0, prossima = 0.25;
+        const double durata = 360.0;
+        for (double t = 0.0; t < durata; t += 1e-4) {
+            if (t >= prossima) {
+                vere.push_back(t);
+                prossima = 1e9;
+            }
+            const double bpm = t < 120.0 ? 118.0 : t < 128.0 ? 118.0 + 6.0 * (t - 120.0) / 8.0 : t < 240.0 ? 124.0 : 128.0;
+            if (t >= 240.0 && t - 1e-4 < 240.0) f += 0.5;
+            f += bpm / 60.0 * 1e-4;
+            if (f >= 1.0) {
+                f -= 1.0;
+                prossima = t + 1e-4;
+            }
+        }
+        Traccia* t = batteriaSu(vere, durata);
+        const Tempo tempo = analizzaTempo(*t);
+        int fuori = 0, contate = 0;
+        double peggiore = 0.0;
+        for (double v : vere) {
+            if (v < 2.0 || v > durata - 2.0 || std::fabs(v - 240.0) < 3.0) continue;
+            double vicina = 1e9;
+            for (double b : tempo.battiti) vicina = std::min(vicina, std::fabs(b - v));
+            ++contate;
+            fuori += vicina > 0.005;
+            peggiore = std::max(peggiore, vicina);
+        }
+        char testo[140];
+        std::snprintf(testo, sizeof testo, "mix (118 → 124 → 128 con cambio di brano): %d/%d battute oltre 5 ms (peggiore %.1f ms)",
+                      fuori, contate, peggiore * 1000.0);
+        verifica(!tempo.battiti.empty() && fuori == 0, testo);
+        delete t;
+    }
     {  // tempo fisso con 30 s di pausa (niente batteria) in mezzo: resta la griglia fissa, giusta
         std::vector<double> battute;
         for (int k = 0; 0.2 + k * 60.0 / 124.0 < 150.0; ++k) {
@@ -823,6 +858,125 @@ static void testBpm() {
     Traccia* tono = sinusoide(440.0, 20.0);
     verifica(analizzaTempo(*tono).bpm == 0.0, "BPM: un tono continuo non ha tempo (0)");
     delete tono;
+}
+
+// SYNC continuo: il deck B segue tempo e battute del deck A, anche se il brano di A cambia tempo
+static void testSincro() {
+    auto griglia = [](double bpm, double primo) {
+        auto* g = new Griglia();
+        g->periodo = 60.0 / bpm;
+        g->primo = primo;
+        return g;
+    };
+    auto fase = [](const Griglia& ga, double pa, const Griglia& gb, double pb) {
+        double x = ga.battutaA(pa) - gb.battutaA(pb);
+        return x - std::round(x);
+    };
+    {
+        Motore m;
+        m.prepara(48000.0);
+        m.deck[0].carica(batteria(124.0, 40.0, 0.1, 48000.0));
+        m.deck[1].carica(batteria(118.0, 40.0, 0.37, 48000.0));
+        Griglia ga, gb;
+        ga.periodo = 60.0 / 124.0;
+        ga.primo = 0.1;
+        gb.periodo = 60.0 / 118.0;
+        gb.primo = 0.37;
+        m.deck[0].impostaGriglia(griglia(124.0, 0.1));
+        m.deck[1].impostaGriglia(griglia(118.0, 0.37));
+        m.deck[0].invia(cmd(ComandoDeck::Play, 1.0));
+        gira(m, 1.0);
+        m.deck[1].invia(cmd(ComandoDeck::Vai, 3.3));  // fuori fase apposta
+        m.deck[1].sincro = true;
+        m.deck[1].invia(cmd(ComandoDeck::Play, 1.0));
+        gira(m, 1.0);
+        double peggiore = 0.0;
+        for (int k = 0; k < 40; ++k) {
+            gira(m, 0.5);
+            peggiore = std::max(peggiore, std::fabs(fase(ga, m.deck[0].posizioneSecondi(), gb, m.deck[1].posizioneSecondi())));
+        }
+        char testo[120];
+        std::snprintf(testo, sizeof testo, "SYNC: 118 → 124 BPM, velocità %.4f, battute allineate (scarto massimo %.1f ms)",
+                      m.deck[1].velocita(), peggiore * 60.0 / 124.0 * 1000.0);
+        verifica(vicino(m.deck[1].velocita(), 124.0 / 118.0, 0.002) && peggiore * 60.0 / 124.0 < 0.003, testo);
+        verifica(vicino(m.deck[1].pitchEffettivo(), 124.0 / 118.0 - 1.0, 0.002), "SYNC: il pitch effettivo si legge (per il fader)");
+        // spento: torna il pitch del fader
+        m.deck[1].sincro = false;
+        gira(m, 0.1);
+        verifica(vicino(m.deck[1].velocita(), 1.0, 0.002), "SYNC spento: torna il pitch del fader");
+    }
+    {
+        // guida che accelera piano da 120 a 126 BPM in 60 s (griglia variabile), chi segue è a 122 fisso
+        std::vector<double> vere;
+        double f = 0.0, prossima = 0.2;
+        for (double t = 0.0; t < 70.0; t += 1e-4) {
+            if (t >= prossima) {
+                vere.push_back(t);
+                prossima = 1e9;
+            }
+            f += (120.0 + 6.0 * std::min(t, 60.0) / 60.0) / 60.0 * 1e-4;
+            if (f >= 1.0) {
+                f -= 1.0;
+                prossima = t + 1e-4;
+            }
+        }
+        Motore m;
+        m.prepara(48000.0);
+        m.deck[0].carica(batteriaSu(vere, 70.0, 48000.0));
+        m.deck[1].carica(batteria(122.0, 70.0, 0.05, 48000.0));
+        auto* gv = new Griglia();
+        gv->battiti = vere;
+        Griglia ga = *gv, gb;
+        gb.periodo = 60.0 / 122.0;
+        gb.primo = 0.05;
+        m.deck[0].impostaGriglia(gv);
+        m.deck[1].impostaGriglia(griglia(122.0, 0.05));
+        m.deck[1].sincro = true;
+        m.deck[0].invia(cmd(ComandoDeck::Play, 1.0));
+        m.deck[1].invia(cmd(ComandoDeck::Play, 1.0));
+        gira(m, 2.0);
+        double peggiore = 0.0;
+        for (int k = 0; k < 110; ++k) {
+            gira(m, 0.5);
+            peggiore = std::max(peggiore, std::fabs(fase(ga, m.deck[0].posizioneSecondi(), gb, m.deck[1].posizioneSecondi())));
+        }
+        char testo[120];
+        std::snprintf(testo, sizeof testo, "SYNC su un brano che accelera (120→126): sempre in battuta (scarto massimo %.1f ms)",
+                      peggiore * 0.49 * 1000.0);
+        verifica(peggiore * 0.49 < 0.003, testo);
+    }
+}
+
+// Loop agganciato ai colpi veri: la griglia chiesta è 12 ms in ritardo, il loop va sui colpi (un attimo prima)
+static void testLoopAgganciato() {
+    Motore m;
+    m.prepara(48000.0);
+    m.deck[0].carica(batteria(120.0, 20.0, 0.2, 48000.0));
+    gira(m, 0.01);
+    ComandoDeck c = cmd(ComandoDeck::Loop, 0.2 + 5 * 0.5 + 0.012, 0.2 + 9 * 0.5 + 0.012);
+    c.aggancia = true;
+    m.deck[0].invia(c);
+    gira(m, 0.01);
+    const double inizio = m.deck[0].loopInizioSecondi(), fine = m.deck[0].loopFineSecondi();
+    char testo[140];
+    std::snprintf(testo, sizeof testo, "loop agganciato ai colpi: inizio %+.1f ms, fine %+.1f ms dal colpo vero",
+                  (inizio - (0.2 + 2.5)) * 1000.0, (fine - (0.2 + 4.5)) * 1000.0);
+    verifica(inizio > 2.7 - 0.0025 && inizio <= 2.7 && fine > 4.7 - 0.0025 && fine <= 4.7, testo);
+    // senza aggancio resta dove chiesto
+    m.deck[0].invia(cmd(ComandoDeck::Loop, 2.712, 4.712));
+    gira(m, 0.01);
+    verifica(vicino(m.deck[0].loopInizioSecondi(), 2.712, 1e-9), "loop senza aggancio: dove chiesto");
+    // nel silenzio (nessun colpo vicino) resta dove chiesto
+    Motore m2;
+    m2.prepara(48000.0);
+    m2.deck[0].carica(sinusoide(220.0, 10.0, 48000.0));
+    gira(m2, 0.01);
+    ComandoDeck c2 = cmd(ComandoDeck::Loop, 2.0, 4.0);
+    c2.aggancia = true;
+    m2.deck[0].invia(c2);
+    gira(m2, 0.01);
+    verifica(vicino(m2.deck[0].loopInizioSecondi(), 2.0, 1e-9) && vicino(m2.deck[0].loopFineSecondi(), 4.0, 1e-9),
+             "loop agganciato su un suono senza colpi: resta sulla griglia");
 }
 
 static std::string fileTemporaneo(const char* nome) {
@@ -1511,6 +1665,8 @@ int main() {
     testWaveform();
     testCaricamentoProgressivo();
     testBpm();
+    testSincro();
+    testLoopAgganciato();
     testKeylock();
     testCacheWaveform();
     testRegistrazione();

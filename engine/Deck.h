@@ -9,11 +9,13 @@
 #pragma once
 
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
 #include "Coda.h"
 #include "Filtri.h"
+#include "Griglia.h"
 #include "Keylock.h"
 #include "Traccia.h"
 
@@ -32,12 +34,15 @@ struct ComandoDeck {
         ToccoSposta,   // a = spostamento in secondi dal punto in cui il dito si è appoggiato
         ToccoFine,
         ImpostaCue,    // a = secondi
-        Loop,          // a = inizio, b = fine in secondi; b <= a spegne il loop
+        Loop,          // a = inizio, b = fine in secondi; b <= a spegne il loop; aggancia = sui colpi veri vicini
+        Griglia,       // griglia = griglia delle battute del brano (il deck ne diventa proprietario), per il SYNC
     };
     Tipo tipo = Play;
     double a = 0.0;
     double b = 0.0;
+    bool aggancia = false;
     Traccia* traccia = nullptr;
+    djaaay::Griglia* griglia = nullptr;
 };
 
 class Deck {
@@ -51,7 +56,8 @@ public:
     // Qualsiasi thread: comandi e regolazioni.
     bool invia(const ComandoDeck& c) { return comandi_.invia(c); }
     void carica(Traccia* t);           // passa la proprietà della traccia al deck
-    void raccogliTracceVecchie();      // libera le tracce sostituite (chiamare dal thread dell'interfaccia)
+    void impostaGriglia(Griglia* g);   // passa la proprietà della griglia (nullptr = nessuna)
+    void raccogliTracceVecchie();      // libera tracce e griglie sostituite (chiamare dal thread dell'interfaccia)
 
     std::atomic<float> pitch{0.0f};          // −0,5…+0,5 (es. 0,08 = +8%)
     std::atomic<float> frizione{0.35f};      // 0 = il disco scivola a lungo, 1 = riparte subito
@@ -59,6 +65,7 @@ public:
     std::atomic<float> frenataSecondi{0.40f};
     std::atomic<bool> keylock{false};        // KEY: cambiando il pitch il tono resta quello originale
     std::atomic<bool> dvs{false};            // segue il vinile timecode (velocità da render, posizione da dvsPosizione)
+    std::atomic<bool> sincro{false};         // SYNC: tempo e battute seguono l'altro deck (lo fa il Motore)
 
     // Letture per l'interfaccia (aggiornate a ogni blocco)
     double posizioneSecondi() const { return posizione_.load(std::memory_order_relaxed); }
@@ -67,6 +74,25 @@ public:
     bool inPlay() const { return motoreLetto_.load(std::memory_order_relaxed); }
     double cueSecondi() const { return cueLetto_.load(std::memory_order_relaxed); }
     bool keylockInUso() const { return keylockInUso_.load(std::memory_order_relaxed); }  // false durante scratch
+    float pitchEffettivo() const { return pitchEffettivo_.load(std::memory_order_relaxed); }  // col SYNC ≠ dal fader
+    // Dove sta davvero il loop (agganciato ai colpi: può differire di qualche ms da quello chiesto); fine 0 = spento
+    double loopInizioSecondi() const { return loopInizioLetto_.load(std::memory_order_relaxed); }
+    double loopFineSecondi() const { return loopFineLetto_.load(std::memory_order_relaxed); }
+
+    // --- SYNC: le usa il Motore nel thread audio, prima di render()
+    bool haGriglia() const { return griglia_ != nullptr && traccia_ != nullptr; }
+    double battutaQui() const;                 // battuta frazionaria della puntina
+    double durataBattutaQui() const;           // secondi di brano della battuta in corso
+    double rapportoMotore() const;             // secondi di brano al secondo, a motore (1 + pitch, o del SYNC)
+    bool aMotore() const { return motore_ && !tocco_ && !scivola_ && !dvs.load(std::memory_order_relaxed); }
+    bool suona() const { return motore_; }
+    // a velocità piena (finito l'avvio "da giradischi"): solo allora si allinea la fase
+    bool aRegime() const { return aMotore() && std::fabs(vel_ - base_ * rapportoMotore()) < 0.002 * base_; }
+    bool loopCorto() const;                    // loop acceso più corto di una battuta (la fase salta a ogni giro)
+    void impostaSincro(double rapporto) { rapportoSincro_ = rapporto; }  // 0 = vale il pitch del fader
+    void spostaDiBattute(double battute);      // salto di fase (con dissolvenza)
+    bool chiedeAllineamento() const { return allinea_; }  // appena partito / saltato: allineare subito
+    void allineato() { allinea_ = false; }
 
     // Thread audio: scrive `frame` campioni stereo non interleaved in l, r. `velocitaTimecode` (se il DVS è
     // acceso) = velocità del vinile per ogni campione (1 = normale).
@@ -82,14 +108,21 @@ private:
     // Sposta la puntina: breve dissolvenza dalla posizione vecchia (niente click) e il dito resta "agganciato".
     // `perKeylock`: il keylock, che legge in anticipo, deve ripartire (non serve per il giro del loop, che prevede).
     void salta(double nuovaPos, bool perKeylock = true);
+    // Il colpo vero (attacco) più vicino a `pos` (frame), entro ~20 ms; -1 se lì non ce n'è uno netto
+    double attaccoVicino(double pos) const;
 
     static constexpr int kSfuma = 96;  // ~2 ms di dissolvenza sui salti
 
     Coda<ComandoDeck, 256> comandi_;
     Coda<Traccia*, 16> daLiberare_;
+    Coda<Griglia*, 16> grigliaDaLiberare_;
 
     // Stato del thread audio
     Traccia* traccia_ = nullptr;
+    Griglia* griglia_ = nullptr;
+    double rapportoSincro_ = 0.0;   // velocità imposta dal SYNC (0 = niente)
+    bool allinea_ = false;          // SYNC: allineare subito la fase (dopo Play, un salto o l'aggancio)
+    bool sincroPrima_ = false;
     double srUscita_ = 48000.0;
     double base_ = 1.0;        // velocità normale in frame della traccia per frame di uscita
     double pos_ = 0.0;         // frame della traccia
@@ -131,6 +164,8 @@ private:
     std::atomic<bool> motoreLetto_{false};
     std::atomic<double> cueLetto_{0.0};
     std::atomic<bool> keylockInUso_{false};
+    std::atomic<float> pitchEffettivo_{0.0f};
+    std::atomic<double> loopInizioLetto_{0.0}, loopFineLetto_{0.0};
 };
 
 }  // namespace djaaay

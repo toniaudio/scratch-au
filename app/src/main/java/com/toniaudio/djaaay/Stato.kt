@@ -134,6 +134,7 @@ class StatoDeck(val indice: Int) {
     // comandi
     var pitch by mutableFloatStateOf(0f)  // −0,5…+0,5
     var keylock by mutableStateOf(false)
+    var sincro by mutableStateOf(false)  // SYNC acceso: segue tempo e battute dell'altro deck
     val hotCue = mutableStateListOf<Double?>(null, null, null, null)
     var loopAttivo by mutableStateOf(false)
     var loopInizio by mutableDoubleStateOf(0.0)

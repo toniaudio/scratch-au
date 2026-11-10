@@ -26,20 +26,40 @@ class ControlloreTest {
     }
 
     @Test
-    fun syncPareggiaIlTempoEAllineaLeBattute() {
+    fun syncEUnInterruttoreCheSegueIlMotore() {
         carica(0, 100.0, 0.0)
         carica(1, 98.0, 0.2)
         c.impostaPitch(0, 0.02f)  // A suona a 102 BPM
-        stato.deck[0].inPlay = true
-        stato.deck[0].posizione = 6.0 + 0.25 * 0.6  // A a un quarto di battuta (battuta = 0,6 s; 6 s = 10 battute)
-        stato.deck[1].posizione = 0.2 + 5 * (60.0 / 98.0)  // B esattamente su una battuta
         c.sync(1)
-        assertEquals(102.0 / 98.0 - 1.0, stato.deck[1].pitch.toDouble(), 1e-5)
-        assertEquals(102.0, stato.deck[1].bpmEffettivi, 1e-3)
-        val salto = ponte.comandi.last()
-        assertEquals(Cmd.VAI, salto.tipo)
-        // B va avanti di un quarto della sua battuta
-        assertEquals(stato.deck[1].posizione + 0.25 * 60.0 / 98.0, salto.a, 1e-6)
+        assertTrue(stato.deck[1].sincro)
+        assertEquals(1f, ponte.deck[1 to ParDeck.SINCRO])
+        assertEquals(102.0 / 98.0 - 1.0, stato.deck[1].pitch.toDouble(), 1e-5)  // subito, prima del motore
+        // poi il pitch lo dice il motore (che tiene il tempo anche se cambia lungo il brano)
+        ponte.istantanea[8 + 7] = 0.031
+        c.aggiornaDaMotore()
+        assertEquals(0.031f, stato.deck[1].pitch, 1e-6f)
+        // SYNC su A: B smette di seguire, A segue B
+        c.sync(0)
+        assertTrue(stato.deck[0].sincro)
+        assertTrue(!stato.deck[1].sincro)
+        assertEquals(0f, ponte.deck[1 to ParDeck.SINCRO])
+        assertEquals(0.031f, ponte.deck[1 to ParDeck.PITCH])  // B resta al tempo che aveva
+        // muovere il pitch a mano stacca il SYNC
+        c.impostaPitch(0, 0.01f)
+        assertTrue(!stato.deck[0].sincro)
+        assertEquals(0f, ponte.deck[0 to ParDeck.SINCRO])
+        // ritoccato SYNC acceso: si spegne
+        c.sync(1)
+        c.sync(1)
+        assertTrue(!stato.deck[1].sincro)
+    }
+
+    @Test
+    fun laGrigliaArrivaAlMotoreQuandoSiCaricaUnBrano() {
+        c.caricaBrano(0, branoFinto(5, "Mix lungo", "", 600))
+        val g = ponte.griglie[0]!!
+        assertEquals(60.0 / 98.0, g.first, 1e-9)
+        assertEquals(0.37, g.second, 1e-9)
     }
 
     @Test

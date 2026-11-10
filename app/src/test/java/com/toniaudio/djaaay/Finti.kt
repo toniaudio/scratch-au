@@ -23,6 +23,11 @@ class PonteFinto : Ponte {
         this.deck[deck to parametro] = valore
     }
 
+    val griglie = mutableMapOf<Int, Triple<Double, Double, DoubleArray?>>()  // deck → (periodo, primo, battiti)
+    override fun griglia(deck: Int, periodo: Double, primo: Double, battiti: DoubleArray?) {
+        griglie[deck] = Triple(periodo, primo, battiti)
+    }
+
     override fun impostaMixer(parametro: Int, canale: Int, valore: Float) {
         mixer[parametro to canale] = valore
     }

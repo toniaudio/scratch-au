@@ -529,10 +529,29 @@ JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_comando(JNIEnv*, jobject
     c.tipo = static_cast<djaaay::ComandoDeck::Tipo>(tipo);
     c.a = a;
     c.b = b;
+    c.aggancia = c.tipo == djaaay::ComandoDeck::Loop;  // i loop si agganciano ai colpi veri vicini alla griglia
     uscita()->motore.deck[deck].invia(c);
 }
 
-// Parametri del deck: 0 pitch, 1 frizione, 2 avvio (s), 3 frenata (s), 4 keylock (0/1), 5 DVS (0/1)
+// Griglia delle battute del brano nel deck (per il SYNC continuo): fissa (periodo, prima battuta) o variabile
+// (`battiti`, null o vuoto = fissa). periodo <= 0 = nessuna griglia (tempo non noto).
+JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_grigliaDeck(JNIEnv* env, jobject, jint deck, jdouble periodo, jdouble primo,
+                                                                    jdoubleArray battiti) {
+    if (deck < 0 || deck > 1) return;
+    djaaay::Griglia* g = nullptr;
+    if (periodo > 0.0) {
+        g = new djaaay::Griglia();
+        g->periodo = periodo;
+        g->primo = primo;
+        if (battiti != nullptr && env->GetArrayLength(battiti) >= 2) {
+            g->battiti.resize(static_cast<size_t>(env->GetArrayLength(battiti)));
+            env->GetDoubleArrayRegion(battiti, 0, env->GetArrayLength(battiti), g->battiti.data());
+        }
+    }
+    uscita()->motore.deck[deck].impostaGriglia(g);
+}
+
+// Parametri del deck: 0 pitch, 1 frizione, 2 avvio (s), 3 frenata (s), 4 keylock (0/1), 5 DVS (0/1), 6 SYNC (0/1)
 JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaDeck(JNIEnv*, jobject, jint deck, jint parametro, jfloat v) {
     if (deck < 0 || deck > 1) return;
     djaaay::Deck& d = uscita()->motore.deck[deck];
@@ -543,6 +562,7 @@ JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaDeck(JNIEnv*, job
         case 3: d.frenataSecondi.store(std::clamp(v, 0.0f, 5.0f)); break;
         case 4: d.keylock.store(v >= 0.5f); break;
         case 5: d.dvs.store(v >= 0.5f); break;
+        case 6: d.sincro.store(v >= 0.5f); break;
         default: break;
     }
 }
@@ -638,7 +658,7 @@ JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_impostaFx(JNIEnv*, jobje
 }
 
 // Istantanea per l'interfaccia (a ogni fotogramma), senza allocazioni:
-// per deck (×8, da 0 e da 8): posizione, durata, velocità, in play, cue, keylock in uso, livello canale, 0;
+// per deck (×8, da 0 e da 8): posizione, durata, velocità, in play, cue, keylock in uso, livello canale, pitch effettivo;
 // 16 livello master L, 17 livello master R, 18 REC attiva, 19 secondi registrati;
 // 20…27 pad del campionatore che suonano, 28…35 avanzamento dei pad (0…1), 36 canali dell'uscita (4 = cuffie)
 constexpr int kValoriStato = 37;
@@ -657,6 +677,7 @@ JNIEXPORT void JNICALL Java_com_toniaudio_djaaay_Motore_stato(JNIEnv* env, jobje
         v[d * 8 + 4] = k.cueSecondi();
         v[d * 8 + 5] = k.keylockInUso() ? 1.0 : 0.0;
         v[d * 8 + 6] = m.mixer.canale[d].livello.load();
+        v[d * 8 + 7] = k.pitchEffettivo();  // col SYNC acceso il pitch lo decide il motore
     }
     v[16] = m.mixer.livelloL.load();
     v[17] = m.mixer.livelloR.load();

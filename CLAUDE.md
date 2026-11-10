@@ -173,6 +173,18 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
     variazioni ±15%). App: `StatoDeck.battiti`, `battutaA`/`tempoDellaBattuta`/`battitoA`; loop, SYNC, BPM mostrato
     (`bpmQui`), tempo degli FX e righe della griglia usano la griglia vera. `SenzaDenormali` (FTZ) nell'analisi e
     in `Motore::render`: nei silenzi l'analisi era 8× più lenta su x86.
+- **SYNC continuo e loop sui colpi** (10/11, "sync ballerino, loop che non segue i transienti"):
+  - Il motore ha la griglia di ogni deck (`Griglia.h`, mandata da `Controllore.inviaGriglia` → JNI `grigliaDeck`).
+    `Motore::sincronizza()` a ogni blocco: chi ha SYNC acceso va alle battute/s della guida (griglia dove si trova
+    ognuno, quindi anche coi tempi che cambiano) e corregge la fase in ~0,4 s (max 6%); dopo Play (finito l'avvio),
+    un salto o l'aggancio allinea subito con un salto. Niente correzione di fase con dito/DVS/loop < 1 battuta.
+    SYNC = interruttore (tasto acceso), uno solo segue; il fader del pitch mostra il pitch effettivo (istantanea o+7);
+    muovere il pitch o spegnere SYNC lascia il deck al tempo che aveva. Test: scarto < 0,3 ms anche su guida 120→126.
+  - Loop: inizio e fine agganciati al colpo vero entro ±20 ms dalla griglia (`Deck::attaccoVicino`: energia a
+    finestre di 1 ms, salto ≥ 4× sui 6 ms prima), 0,5 ms prima dell'attacco; se un capo non ha colpo si sposta come
+    l'altro. Il motore espone i punti veri (`loopInizioSecondi`).
+  - Analisi: la lisciatura delle battute non attraversa i cambi di brano dei mix (intervallo che si scosta > 5%);
+    test mix 118→124→128 con cambio di fase: 0 battute oltre 5 ms. File di analisi v4.
 - iOS valutato (28/10): fattibile (motore C++ riusabile, UI con Compose Multiplatform), ma con Apple ID gratuito la
   firma scade ogni 7 giorni (o 99 €/anno). L'utente ha deciso: **per ora resta solo Android**.
 - Prossimo: prova vera dell'utente (MIDI con l'X-Session, DVS con scheda USB), poi pre-ascolto in cuffia

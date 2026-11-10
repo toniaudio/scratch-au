@@ -43,6 +43,8 @@ object Motore {
     // --- comandi e stato (vedi Ponte)
     external fun comando(deck: Int, tipo: Int, a: Double, b: Double)
     external fun impostaDeck(deck: Int, parametro: Int, valore: Float)
+    /** Griglia delle battute per il SYNC: fissa (periodo s, prima battuta) o variabile (`battiti`); periodo 0 = nessuna. */
+    external fun grigliaDeck(deck: Int, periodo: Double, primo: Double, battiti: DoubleArray?)
     external fun impostaMixer(parametro: Int, canale: Int, valore: Float)
     external fun impostaFx(deck: Int, parametro: Int, tipo: Int, valore: Float)
 
