@@ -40,7 +40,7 @@ void costruisciLivelli(Waveform& w) {
 }
 
 const char kFirma[4] = {'D', 'V', 'S', 'W'};
-constexpr uint32_t kVersioneFile = 4;  // 2: BPM e prima battuta · 3: griglia variabile · 4: griglia senza mescolare i brani dei mix
+constexpr uint32_t kVersioneFile = 5;  // 2: BPM e prima battuta · 3: griglia variabile · 4: mix · 5: tempi 3/2, deriva su 16 battute
 
 }  // namespace
 
@@ -341,6 +341,28 @@ static Tempo tempoDaCurva(const std::vector<float>& grezza, double finestreAlSec
     }
     if (bpm <= 0.0) return tempo;
 
+    // 1b) tempi "parenti" a 3/2 e 2/3: vince quello la cui griglia prende in media i colpi più forti (es. house a 174:
+    // l'autocorrelazione preferiva 116, la cui griglia cade una volta su due sui controtempi). Doppio e metà no:
+    // con kick e snare di forza diversa la metà prenderebbe solo i colpi forti e vincerebbe sempre.
+    {
+        auto media = [&](double b) {
+            double f = 0.0;
+            const double periodo = 60.0 / b * finestreAlSecondo;
+            return adattaGriglia(c, periodo, f) / (static_cast<double>(c.size()) / periodo);
+        };
+        double scelto = bpm, valore = media(bpm);
+        for (double r : {1.5, 2.0 / 3.0}) {
+            const double b = bpm * r;
+            if (b < 60.0 || b > 180.0) continue;
+            const double v = media(b);
+            if (v > 1.03 * valore) {
+                scelto = b;
+                valore = v;
+            }
+        }
+        bpm = scelto;
+    }
+
     // 2) ricerca fine: la griglia di battute che prende più attacchi su tutto il brano
     double fase = 0.0, migliorGriglia = -1.0, bpmFine = bpm;
     for (double b = bpm - 0.6; b <= bpm + 0.6; b += 0.01) {
@@ -365,8 +387,9 @@ static Tempo tempoDaCurva(const std::vector<float>& grezza, double finestreAlSec
     tempo.bpm = bpm;
     tempo.primoBattito = (fase + kCorrezioneFase) / finestreAlSecondo;
 
-    // 3) il tempo cambia lungo il brano? Si cercano le battute vere: se per almeno 8 battute di fila si allontanano
-    // dalla griglia fissa più di 20 ms, la griglia diventa quella delle battute vere
+    // 3) il tempo cambia lungo il brano? Si cercano le battute vere: se per almeno 16 battute di fila si allontanano
+    // dalla griglia fissa più di 20 ms (una deriva vera, non qualche colpo storto), la griglia diventa quella delle
+    // battute vere
     std::vector<double> vere = trovaBattute(intera, 60.0 / bpm * finestreAlSecondo, finestreAlSecondo);
     const double battito = 60.0 / bpm;
     int fuori = 0, maxFuori = 0;
@@ -376,7 +399,7 @@ static Tempo tempoDaCurva(const std::vector<float>& grezza, double finestreAlSec
         fuori = scarto > 0.020 ? fuori + 1 : 0;
         maxFuori = std::max(maxFuori, fuori);
     }
-    if (maxFuori >= 8 && vere.size() >= 16) {
+    if (maxFuori >= 16 && vere.size() >= 32) {
         std::vector<double> intervalli;
         for (size_t k = 1; k < vere.size(); ++k) intervalli.push_back(vere[k] - vere[k - 1]);
         std::nth_element(intervalli.begin(), intervalli.begin() + static_cast<long>(intervalli.size() / 2), intervalli.end());

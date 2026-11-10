@@ -41,7 +41,7 @@ public:
 private:
     double sr_ = 48000.0;
     void leggiTimecode(int n);
-    void sincronizza();
+    void sincronizza(int n);
     float aL_[kBlocco], aR_[kBlocco], bL_[kBlocco], bR_[kBlocco];
     float inL_[2 * kBlocco], inR_[2 * kBlocco], velIn_[2 * kBlocco], velTc_[kBlocco];
     float master_[2 * kBlocco], cuffie_[2 * kBlocco];

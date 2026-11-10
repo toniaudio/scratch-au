@@ -101,6 +101,12 @@ double Deck::battutaQui() const { return griglia_->battutaA(pos_ / traccia_->sam
 
 double Deck::durataBattutaQui() const { return griglia_->durataA(pos_ / traccia_->sampleRate); }
 
+double Deck::durataMediaQui() const { return griglia_->durataMediaA(pos_ / traccia_->sampleRate); }
+
+double Deck::rapportoBase() const {
+    return rapportoBase_ > 0.0 ? rapportoBase_ : 1.0 + static_cast<double>(pitch.load(std::memory_order_relaxed));
+}
+
 double Deck::rapportoMotore() const {
     return rapportoSincro_ > 0.0 ? rapportoSincro_ : 1.0 + static_cast<double>(pitch.load(std::memory_order_relaxed));
 }
@@ -117,46 +123,58 @@ void Deck::spostaDiBattute(double battute) {
     salta(griglia_->tempoDi(qui + battute) * sr);
 }
 
-// Colpo vero vicino: energia a finestre di 1 ms; l'attacco è dove l'energia salta rispetto ai 6 ms prima
-// (almeno 4 volte), preferendo i salti più grandi e più vicini. Si torna un po' prima dell'attacco (0,5 ms): il loop
-// riparte prendendo tutto il colpo, senza tagliarne l'inizio.
+// Colpo vero vicino: solo il corpo di kick e snare (sotto ~250 Hz: charleston e piatti non contano), energia a
+// finestre di 1 ms; l'attacco è dove l'energia salta rispetto ai 6 ms prima (almeno 4 volte), preferendo i salti più
+// grandi e più vicini alla griglia. Si torna un po' prima dell'attacco (~1 ms): il loop riparte con tutto il colpo.
 double Deck::attaccoVicino(double pos) const {
     if (traccia_ == nullptr) return -1.0;
     const Traccia& t = *traccia_;
     const int finestra = std::max(8, static_cast<int>(0.001 * t.sampleRate));
-    constexpr int kRaggio = 20, kPrima = 6;
+    constexpr int kRaggio = 15, kPrima = 6, kAssesta = 20;  // ±15 ms; 20 ms per far assestare il filtro
     constexpr int kTotale = 2 * kRaggio + kPrima + 1;
     double e[kTotale];
     const auto base = static_cast<int64_t>(pos) - static_cast<int64_t>(kRaggio + kPrima) * finestra;
+    // passa-basso a due poli (~250 Hz)
+    const float k = 1.0f - std::exp(-2.0f * 3.14159265f * 250.0f / static_cast<float>(t.sampleRate));
+    float p1 = 0.0f, p2 = 0.0f;
+    for (int64_t j = base - static_cast<int64_t>(kAssesta) * finestra; j < base; ++j) {
+        p1 += k * (0.5f * (t.campione(j, 0) + t.campione(j, 1)) - p1);
+        p2 += k * (p1 - p2);
+    }
     double massimo = 0.0;
-    for (int k = 0; k < kTotale; ++k) {
+    for (int f = 0; f < kTotale; ++f) {
         double somma = 0.0;
         for (int i = 0; i < finestra; ++i) {
-            const int64_t j = base + static_cast<int64_t>(k) * finestra + i;
-            const float x = 0.5f * (t.campione(j, 0) + t.campione(j, 1));
-            somma += static_cast<double>(x) * x;
+            const int64_t j = base + static_cast<int64_t>(f) * finestra + i;
+            p1 += k * (0.5f * (t.campione(j, 0) + t.campione(j, 1)) - p1);
+            p2 += k * (p1 - p2);
+            somma += static_cast<double>(p2) * p2;
         }
-        e[k] = somma / finestra;
-        massimo = std::max(massimo, e[k]);
+        e[f] = somma / finestra;
+        massimo = std::max(massimo, e[f]);
     }
-    if (massimo < 1e-7) return -1.0;  // silenzio
+    if (massimo < 1e-7) return -1.0;  // niente kick né snare qui
     double meglio = 0.0;
     int scelto = -1;
-    for (int k = kPrima; k < kTotale; ++k) {
+    for (int f = kPrima; f < kTotale; ++f) {
         double prima = 0.0;
-        for (int j = k - kPrima; j < k; ++j) prima += e[j];
+        for (int j = f - kPrima; j < f; ++j) prima += e[j];
         prima /= kPrima;
-        const double salto = e[k] / (prima + 1e-4 * massimo);
-        if (salto < 4.0 || e[k] < 0.05 * massimo) continue;
-        const double distanza = std::fabs(static_cast<double>(k - kPrima - kRaggio)) / kRaggio;
+        const double salto = e[f] / (prima + 1e-4 * massimo);
+        if (salto < 4.0 || e[f] < 0.05 * massimo) continue;
+        const double distanza = std::fabs(static_cast<double>(f - kPrima - kRaggio)) / kRaggio;
         const double punti = salto * (1.0 - 0.5 * distanza);
         if (punti > meglio) {
             meglio = punti;
-            scelto = k;
+            scelto = f;
         }
     }
     if (scelto < 0) return -1.0;
-    return static_cast<double>(base) + static_cast<double>(scelto) * finestra - 0.5 * finestra;
+    // il salto più netto può arrivare un paio di ms dopo l'inizio del colpo (il corpo del kick cresce, il passa-basso
+    // ritarda): si torna indietro finché l'energia sale ancora (sopra il 5% del salto), poi una finestra in più
+    int inizio = scelto;
+    while (inizio > 1 && e[inizio - 1] < e[inizio] && e[inizio - 1] > 0.05 * e[scelto]) --inizio;
+    return static_cast<double>(base) + static_cast<double>(inizio - 1) * finestra;
 }
 
 void Deck::salta(double nuovaPos, bool perKeylock) {
@@ -331,9 +349,9 @@ void Deck::renderBlocco(float* l, float* r, int frame, const float* timecode) {
     const bool sincroOra = sincro.load(std::memory_order_relaxed);
     if (sincroOra && !sincroPrima_) allinea_ = true;
     sincroPrima_ = sincroOra;
-    if (!sincroOra) rapportoSincro_ = 0.0;
+    if (!sincroOra) rapportoSincro_ = rapportoBase_ = 0.0;
     const double velNormale = base_ * rapportoMotore();
-    pitchEffettivo_.store(static_cast<float>(rapportoMotore() - 1.0), std::memory_order_relaxed);
+    pitchEffettivo_.store(static_cast<float>(rapportoBase() - 1.0), std::memory_order_relaxed);
 
     // Frizione 0 → costante di tempo 0,6 s (scivola), 1 → 20 ms (riparte subito)
     const double f = std::clamp(static_cast<double>(frizione.load(std::memory_order_relaxed)), 0.0, 1.0);

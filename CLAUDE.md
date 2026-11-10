@@ -185,6 +185,16 @@ L'app si chiama **DVS** (27/10/2026; prima "Djaaay"). Nel codice il package Kotl
     l'altro. Il motore espone i punti veri (`loopInizioSecondi`).
   - Analisi: la lisciatura delle battute non attraversa i cambi di brano dei mix (intervallo che si scosta > 5%);
     test mix 118→124→128 con cambio di fase: 0 battute oltre 5 ms. File di analisi v4.
+- **SYNC stabile "come djay"** (10/11, seconda prova dell'utente: pitch che ballava, loop non sui kick):
+  - Il SYNC calcolava il tempo battuta per battuta → con le imprecisioni dei brani veri il pitch ballava. Ora:
+    tempo di base = rapporto dei tempi medi (±8 battute, `Griglia::durataMediaA`, finestra tenuta dentro il brano),
+    lisciato in ~2 s; è quello sul fader (`pitchEffettivo` = base; l'app lo aggiorna solo oltre lo 0,1%). Fase:
+    allineamento con salto dopo Play/salto/aggancio, poi correzioni invisibili solo oltre 2 ms, max 0,4%; fuori
+    battuta > 40 ms per più di 1 s → riallinea. Test: griglia imprecisa ±4 ms → pitch varia < 0,1%, colpi < 2 ms.
+  - Loop agganciato SOLO al corpo di kick/snare (passa-basso 250 Hz, ±15 ms), all'inizio vero del colpo.
+  - Analisi: tempi parenti 3/2 e 2/3 controllati (house a 174 era 116); griglia variabile solo con deriva di
+    ≥ 16 battute ritmiche di fila (> 20 ms). Test con traccia house sintetica realistica (kick, clap, charleston,
+    basso in levare, pad) e mix house 122→125→127: errore medio 0,5 ms. File di analisi v5. BPM mostrato = tempo medio.
 - iOS valutato (28/10): fattibile (motore C++ riusabile, UI con Compose Multiplatform), ma con Apple ID gratuito la
   firma scade ogni 7 giorni (o 99 €/anno). L'utente ha deciso: **per ora resta solo Android**.
 - Prossimo: prova vera dell'utente (MIDI con l'X-Session, DVS con scheda USB), poi pre-ascolto in cuffia

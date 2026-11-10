@@ -94,7 +94,8 @@ class Controllore(
         for (d in stato.deck) {
             val o = d.indice * 8
             d.posizione = istantanea[o]
-            if (d.sincro) d.pitch = istantanea[o + 7].toFloat()  // col SYNC il pitch lo decide il motore
+            // col SYNC il pitch lo decide il motore; sul fader cambia solo oltre lo 0,1% (niente tremolii)
+            if (d.sincro && abs(istantanea[o + 7].toFloat() - d.pitch) > 0.001f) d.pitch = istantanea[o + 7].toFloat()
             d.durata = istantanea[o + 1]
             d.velocita = istantanea[o + 2]
             d.inPlay = istantanea[o + 3] > 0.5

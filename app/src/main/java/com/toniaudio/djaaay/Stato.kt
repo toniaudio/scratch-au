@@ -184,8 +184,17 @@ class StatoDeck(val indice: Int) {
         return tempoDellaBattuta(i + 1) - tempoDellaBattuta(i)
     }
 
-    /** Durata di una battuta dove si trova la puntina (secondi del brano). */
-    val battitoSecondi: Double get() = battitoA(posizione)
+    /**
+     * Durata di una battuta dove si trova la puntina (secondi del brano), in media su 16 battute come nel motore:
+     * il BPM mostrato e il tempo degli effetti non ballano con le piccole imprecisioni delle singole battute.
+     */
+    val battitoSecondi: Double get() {
+        val b = battiti ?: return periodoFisso
+        val ultima = (b.size - 1).toDouble()
+        val ampiezza = minOf(16.0, ultima)
+        val da = (battutaA(posizione) - ampiezza / 2).coerceIn(0.0, ultima - ampiezza)
+        return (tempoDellaBattuta(da + ampiezza) - tempoDellaBattuta(da)) / ampiezza
+    }
 
     /** BPM del brano dove si trova la puntina (cambia lungo i brani col tempo variabile). */
     val bpmQui: Double get() = if (bpm > 0) 60.0 / battitoSecondi else 0.0

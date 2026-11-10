@@ -83,16 +83,25 @@ public:
     bool haGriglia() const { return griglia_ != nullptr && traccia_ != nullptr; }
     double battutaQui() const;                 // battuta frazionaria della puntina
     double durataBattutaQui() const;           // secondi di brano della battuta in corso
+    double durataMediaQui() const;             // secondi di brano per battuta, in media qui (tempo stabile)
     double rapportoMotore() const;             // secondi di brano al secondo, a motore (1 + pitch, o del SYNC)
     bool aMotore() const { return motore_ && !tocco_ && !scivola_ && !dvs.load(std::memory_order_relaxed); }
     bool suona() const { return motore_; }
     // a velocità piena (finito l'avvio "da giradischi"): solo allora si allinea la fase
     bool aRegime() const { return aMotore() && std::fabs(vel_ - base_ * rapportoMotore()) < 0.002 * base_; }
     bool loopCorto() const;                    // loop acceso più corto di una battuta (la fase salta a ogni giro)
-    void impostaSincro(double rapporto) { rapportoSincro_ = rapporto; }  // 0 = vale il pitch del fader
+    // velocità imposta dal SYNC (0 = vale il pitch del fader) e quella "di base", senza le correzioni di fase: è
+    // quella che si mostra sul fader e che segue chi è a sua volta guida
+    void impostaSincro(double rapporto, double base) {
+        rapportoSincro_ = rapporto;
+        rapportoBase_ = base;
+    }
+    double rapportoBase() const;
+    double rapportoBaseAttuale() const { return rapportoBase_; }  // 0 = SYNC non ancora agganciato
     void spostaDiBattute(double battute);      // salto di fase (con dissolvenza)
     bool chiedeAllineamento() const { return allinea_; }  // appena partito / saltato: allineare subito
     void allineato() { allinea_ = false; }
+    double fuoriFase = 0.0;  // SYNC: da quanti secondi si è fuori battuta di molto (lo usa il Motore)
 
     // Thread audio: scrive `frame` campioni stereo non interleaved in l, r. `velocitaTimecode` (se il DVS è
     // acceso) = velocità del vinile per ogni campione (1 = normale).
@@ -121,6 +130,7 @@ private:
     Traccia* traccia_ = nullptr;
     Griglia* griglia_ = nullptr;
     double rapportoSincro_ = 0.0;   // velocità imposta dal SYNC (0 = niente)
+    double rapportoBase_ = 0.0;     // la stessa senza le correzioni di fase
     bool allinea_ = false;          // SYNC: allineare subito la fase (dopo Play, un salto o l'aggancio)
     bool sincroPrima_ = false;
     double srUscita_ = 48000.0;

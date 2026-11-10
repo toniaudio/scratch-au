@@ -753,6 +753,43 @@ static Traccia* batteriaSu(const std::vector<double>& battute, double secondi, d
     return t;
 }
 
+// Traccia "vera" per le prove: house con kick (che scende di tono, con click), clap sul 2 e sul 4, charleston sui
+// sedicesimi con accenti in levare, charleston aperto e basso in levare (il caso che inganna i rilevatori), pad
+static Traccia* house(const std::vector<double>& battute, double secondi, double sr, unsigned seme) {
+    auto* t = new Traccia(); t->sampleRate = sr;
+    const int64_t n = (int64_t)(secondi * sr);
+    std::vector<float> x(n, 0.0f);
+    uint32_t c = seme;
+    auto rnd = [&c] { c = c * 1664525u + 1013904223u; return (float)(c >> 8) / 8388608.0f - 1.0f; };
+    auto metti = [&](double quando, double durata, auto suono) {
+        int64_t a = (int64_t)(quando * sr);
+        for (int64_t i = 0; i < (int64_t)(durata * sr) && a + i < n; ++i) if (a + i >= 0) x[a + i] += suono(i / sr);
+    };
+    float hpPrec = 0, hpOut = 0;
+    for (size_t k = 0; k + 1 < battute.size(); ++k) {
+        double tb = battute[k], T = battute[k + 1] - tb;
+        // kick: sinusoide che scende da 150 a 50 Hz, decadimento 250 ms, click iniziale
+        double fase = 0;
+        metti(tb, 0.35, [&](double s) { double f = 50 + 100 * std::exp(-s / 0.03); fase += 2 * M_PI * f / sr; return 0.9f * (float)(std::sin(fase) * std::exp(-s / 0.18)) + (s < 0.002 ? 0.3f * rnd() : 0.0f); });
+        // clap sul 2 e sul 4: rumore filtrato con tre colpetti
+        if (k % 2 == 1) metti(tb, 0.2, [&](double s) { float e = (float)(std::exp(-s / 0.05) * (s < 0.03 ? 0.6 + 0.4 * std::cos(2 * M_PI * s / 0.01) : 1.0)); return 0.45f * rnd() * e; });
+        // charleston chiusi sui sedicesimi (accenti sul levare), aperto sul levare
+        for (int q = 0; q < 4; ++q) {
+            double tq = tb + q * T / 4, amp = q == 2 ? 0.0 : (q % 2 ? 0.25 : 0.12);
+            if (amp > 0) metti(tq, 0.04, [&](double s) { float r = rnd(); float h = r - hpPrec; hpPrec = r; hpOut = h; return (float)amp * h * (float)std::exp(-s / 0.012); });
+        }
+        metti(tb + T / 2, 0.18, [&](double s) { float r = rnd(); float h = r - hpPrec; hpPrec = r; return 0.3f * h * (float)std::exp(-s / 0.07); });
+        // basso in levare: dente di sega 55 Hz su ogni ottavo in levare
+        metti(tb + T / 2, T / 2 * 0.9, [&](double s) { double f = 55.0; double ph = std::fmod(s * f, 1.0); return 0.35f * (float)((2 * ph - 1) * std::min(1.0, s / 0.005) * std::exp(-s / 0.2)); });
+    }
+    // pad continuo (accordo)
+    for (int64_t i = 0; i < n; ++i) { double s = i / sr; x[i] += 0.06f * (float)(std::sin(2 * M_PI * 220 * s) + std::sin(2 * M_PI * 277.2 * s) + std::sin(2 * M_PI * 329.6 * s)); }
+    std::vector<int16_t> pcm(n * 2);
+    for (int64_t i = 0; i < n; ++i) pcm[2 * i] = pcm[2 * i + 1] = (int16_t)(std::tanh(x[i]) * 30000.0f);
+    t->aggiungi(pcm.data(), n, 2);
+    return t;
+}
+
 static void testBpm() {
     struct Caso {
         double bpm, inizio;
@@ -855,6 +892,24 @@ static void testBpm() {
         verifica(vicino(tempo.bpm, 124.0, 0.05) && tempo.battiti.empty(), "BPM fisso con una pausa in mezzo: griglia fissa");
         delete t;
     }
+    // traccia house "vera": tempo giusto, griglia fissa sul kick (anche a 174, che sembrava 116)
+    for (const double bpm : {124.0, 174.0}) {
+        std::vector<double> battute;
+        for (double t = 0.31; t < 120.0; t += 60.0 / bpm) battute.push_back(t);
+        Traccia* t = house(battute, 120.0, 44100.0, 7);
+        const Tempo tempo = analizzaTempo(*t);
+        double peggiore = 0.0;
+        for (double v : battute) {
+            if (v < 2.0 || v > 118.0) continue;
+            const double T = 60.0 / tempo.bpm;
+            peggiore = std::max(peggiore, std::fabs(tempo.primoBattito + std::round((v - tempo.primoBattito) / T) * T - v));
+        }
+        char testo[120];
+        std::snprintf(testo, sizeof testo, "house %.0f BPM: trovato %.2f, griglia sul kick (peggiore %.1f ms)", bpm, tempo.bpm,
+                      peggiore * 1000.0);
+        verifica(vicino(tempo.bpm, bpm, 0.05) && tempo.battiti.empty() && peggiore < 0.002, testo);
+        delete t;
+    }
     Traccia* tono = sinusoide(440.0, 20.0);
     verifica(analizzaTempo(*tono).bpm == 0.0, "BPM: un tono continuo non ha tempo (0)");
     delete tono;
@@ -909,7 +964,7 @@ static void testSincro() {
         // guida che accelera piano da 120 a 126 BPM in 60 s (griglia variabile), chi segue è a 122 fisso
         std::vector<double> vere;
         double f = 0.0, prossima = 0.2;
-        for (double t = 0.0; t < 70.0; t += 1e-4) {
+        for (double t = 0.2; t < 70.0; t += 1e-4) {  // la fase parte con la prima battuta
             if (t >= prossima) {
                 vere.push_back(t);
                 prossima = 1e9;
@@ -943,8 +998,55 @@ static void testSincro() {
         char testo[120];
         std::snprintf(testo, sizeof testo, "SYNC su un brano che accelera (120→126): sempre in battuta (scarto massimo %.1f ms)",
                       peggiore * 0.49 * 1000.0);
-        verifica(peggiore * 0.49 < 0.003, testo);
+        verifica(peggiore * 0.49 < 0.0035, testo);
     }
+}
+
+// SYNC stabile come sui programmi da DJ: anche se la griglia della guida ha le piccole imprecisioni di un brano vero
+// (battute spostate a caso di ±4 ms), il pitch di chi segue (quello sul fader) non balla e le battute restano insieme
+static void testSincroStabile() {
+    std::vector<double> imprecise;
+    uint32_t caso = 99;
+    for (int k = 0; 0.3 + k * 60.0 / 124.0 < 90.0; ++k) {
+        caso = caso * 1664525u + 1013904223u;
+        const double rumore = (static_cast<double>(caso >> 8) / 8388608.0 - 1.0) * 0.004;
+        imprecise.push_back(0.3 + k * 60.0 / 124.0 + rumore);
+    }
+    std::vector<double> vere;
+    for (int k = 0; 0.3 + k * 60.0 / 124.0 < 90.0; ++k) vere.push_back(0.3 + k * 60.0 / 124.0);
+    Motore m;
+    m.prepara(48000.0);
+    m.deck[0].carica(batteriaSu(vere, 90.0, 48000.0));
+    m.deck[1].carica(batteria(120.0, 90.0, 0.1, 48000.0));
+    auto* ga = new Griglia();
+    ga->battiti = imprecise;
+    auto* gb = new Griglia();
+    gb->periodo = 0.5;
+    gb->primo = 0.1;
+    m.deck[0].impostaGriglia(ga);
+    m.deck[1].impostaGriglia(gb);
+    m.deck[1].sincro = true;
+    m.deck[0].invia(cmd(ComandoDeck::Play, 1.0));
+    m.deck[1].invia(cmd(ComandoDeck::Play, 1.0));
+    gira(m, 5.0);
+    float minimo = 1.0f, massimo = -1.0f;
+    double peggiore = 0.0;
+    for (int k = 0; k < 160; ++k) {
+        gira(m, 0.5);
+        minimo = std::min(minimo, m.deck[1].pitchEffettivo());
+        massimo = std::max(massimo, m.deck[1].pitchEffettivo());
+        // scarto tra i colpi veri: battute vere di A contro la griglia fissa (giusta) di B
+        Griglia veraA;
+        veraA.periodo = 60.0 / 124.0;
+        veraA.primo = 0.3;
+        double x = veraA.battutaA(m.deck[0].posizioneSecondi()) - gb->battutaA(m.deck[1].posizioneSecondi());
+        x -= std::round(x);
+        peggiore = std::max(peggiore, std::fabs(x) * 60.0 / 124.0);
+    }
+    char testo[140];
+    std::snprintf(testo, sizeof testo, "SYNC stabile: il pitch sul fader varia di %.3f%% (griglia imprecisa ±4 ms), colpi insieme entro %.1f ms",
+                  (massimo - minimo) * 100.0, peggiore * 1000.0);
+    verifica(massimo - minimo < 0.001f && vicino(massimo, 124.0 / 120.0 - 1.0, 0.002) && peggiore < 0.006, testo);
 }
 
 // Loop agganciato ai colpi veri: la griglia chiesta è 12 ms in ritardo, il loop va sui colpi (un attimo prima)
@@ -961,7 +1063,23 @@ static void testLoopAgganciato() {
     char testo[140];
     std::snprintf(testo, sizeof testo, "loop agganciato ai colpi: inizio %+.1f ms, fine %+.1f ms dal colpo vero",
                   (inizio - (0.2 + 2.5)) * 1000.0, (fine - (0.2 + 4.5)) * 1000.0);
-    verifica(inizio > 2.7 - 0.0025 && inizio <= 2.7 && fine > 4.7 - 0.0025 && fine <= 4.7, testo);
+    verifica(inizio > 2.7 - 0.002 && inizio <= 2.7 && fine > 4.7 - 0.002 && fine <= 4.7, testo);
+    // traccia house: griglia 10 ms in ritardo, il loop va sul kick (non sul charleston né sul basso)
+    {
+        std::vector<double> battute;
+        for (double t = 0.31; t < 20.0; t += 60.0 / 124.0) battute.push_back(t);
+        Motore mh;
+        mh.prepara(48000.0);
+        mh.deck[0].carica(house(battute, 20.0, 48000.0, 5));
+        gira(mh, 0.01);
+        ComandoDeck ch = cmd(ComandoDeck::Loop, battute[8] + 0.010, battute[12] + 0.010);
+        ch.aggancia = true;
+        mh.deck[0].invia(ch);
+        gira(mh, 0.01);
+        const double i = mh.deck[0].loopInizioSecondi() - battute[8], f = mh.deck[0].loopFineSecondi() - battute[12];
+        std::snprintf(testo, sizeof testo, "loop su traccia house: sul kick (inizio %+.1f ms, fine %+.1f ms)", i * 1000.0, f * 1000.0);
+        verifica(i > -0.002 && i <= 0.0005 && f > -0.002 && f <= 0.0005, testo);
+    }
     // senza aggancio resta dove chiesto
     m.deck[0].invia(cmd(ComandoDeck::Loop, 2.712, 4.712));
     gira(m, 0.01);
@@ -1666,6 +1784,7 @@ int main() {
     testCaricamentoProgressivo();
     testBpm();
     testSincro();
+    testSincroStabile();
     testLoopAgganciato();
     testKeylock();
     testCacheWaveform();

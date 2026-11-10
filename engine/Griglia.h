@@ -38,6 +38,17 @@ struct Griglia {
         return b[i] + (x - static_cast<double>(i)) * (b[i + 1] - b[i]);
     }
 
+    // Durata media (s) di una battuta attorno all'istante `s`, su ±8 battute: il tempo "stabile" del brano lì
+    // (le singole battute di un brano vero hanno qualche ms di imprecisione: non devono far ballare il SYNC)
+    double durataMediaA(double s) const {
+        if (!variabile()) return periodo;
+        // 16 battute attorno a `s`, tenute dentro il brano (all'inizio e alla fine la finestra non esce)
+        const double ultima = static_cast<double>(battiti.size() - 1);
+        const double ampiezza = std::min(16.0, ultima);
+        const double da = std::clamp(battutaA(s) - 0.5 * ampiezza, 0.0, ultima - ampiezza);
+        return (tempoDi(da + ampiezza) - tempoDi(da)) / ampiezza;
+    }
+
     // Durata (s) della battuta in corso all'istante `s`
     double durataA(double s) const {
         if (!variabile()) return periodo;
